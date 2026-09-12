@@ -1,64 +1,89 @@
-# ShareBox 第一版架构
+# ShareBox 架构设计
 
-## 1. 整体方案
+## 1. 设计范围
 
-第一版只运行 Caddy 和一个管理应用，文件直接存放在本地磁盘。产品功能见 [项目需求](requirements.md)。
+本文只描述 [当前版本需求](requirements.md#2-当前版本) 的实现，不为后续功能预设模块或数据结构。
 
-| 组成 | 职责 |
-| --- | --- |
-| Caddy | HTTPS、管理端 Basic Auth 认证、反向代理、公开目录浏览和下载 |
-| React Router Framework 管理应用 | 文件管理页面、上传、新建目录、重命名、移动、删除、复制链接 |
-| 本地文件系统 | 保存文件，提供目录列表、大小和修改时间 |
-
-不使用数据库，不实现应用账号、会话或独立 API 服务。React Router 沿用此前推荐方案，保留 Node.js 服务端运行时和 SSR，以使用服务端 loader/action。
+当前版本由 Caddy、一个 React Router Framework 管理应用和本地文件系统组成。不使用数据库、应用账号、会话、独立 API 服务或任务队列。
 
 ```mermaid
-flowchart TD
-    Admin[管理员] -->|admin.example.com| Auth[Caddy Basic Auth]
-    Auth -->|认证通过后反向代理| App[React Router 管理应用]
-    App -->|读写| Files[本地公开文件目录]
-    Visitor[访客] -->|files.example.com| Public[Caddy 文件服务]
+flowchart LR
+    Admin[管理员浏览器] -->|HTTPS| Auth[Caddy Basic Auth]
+    Auth -->|认证通过| App[React Router 管理应用]
+    App -->|添加和删除| Files[公开根目录]
+    Visitor[访客浏览器] -->|HTTPS| Public[Caddy file_server]
     Public -->|只读| Files
 ```
 
-## 2. 管理端认证
+## 2. 组件职责
 
-Caddy 对管理域名的全部请求启用 `basic_auth`，覆盖页面、上传和所有写操作。浏览器负责显示认证提示，Caddy 校验凭据后才反向代理到应用。公开域名不配置认证。
+| 组件 | 职责 |
+| --- | --- |
+| Caddy | HTTPS、管理端 Basic Auth、反向代理、公开文件列表与下载 |
+| React Router Framework 应用 | 渲染单页文件管理界面，读取、上传和删除文件 |
+| 本地文件系统 | 保存文件，并作为文件列表的唯一数据来源 |
 
-用户名和密码哈希写在 Caddy 配置中，使用 `caddy hash-password` 生成哈希。应用不保存密码，不提供登录页、退出接口或会话管理。Basic Auth 凭据可能被浏览器缓存，不承诺应用级退出能力。认证行为与配置见 [Caddy basic_auth 文档](https://caddyserver.com/docs/caddyfile/directives/basic_auth)。
+管理应用使用 Node.js 和 TypeScript，界面使用 React Router Framework 与 MUI。应用保留服务端运行时和 SSR，服务端 `loader` 读取文件列表，`action` 处理上传和删除。
 
-应用只监听 `127.0.0.1`，不向公网开放端口，确保外部请求必须经过 Caddy。写操作使用 POST，并由应用检查 `Origin` 与配置的管理端来源一致，拒绝不匹配或缺失的来源，防止浏览器自动携带凭据造成跨站写入。
+## 3. 路由和请求处理
 
-## 3. 应用结构
+管理端只需要一个页面路由 `/`：
 
-应用内只保留两部分，不再拆分认证、上传、链接、数据等独立模块：
+- `loader` 读取公开根目录中的普通文件，返回文件名和大小。
+- 页面使用 MUI 展示单层列表、基础文件选择表单和删除按钮。
+- `action` 根据表单中的 `intent` 执行 `upload` 或 `delete`。
+- 操作成功后由 React Router 重新验证 loader，刷新文件列表。
 
-- **页面与路由**：一个文件管理页；loader 读取当前目录，action 处理表单与上传，完成后刷新列表。
-- **文件操作函数**：统一处理路径校验、读取目录、上传落盘、新建目录、重命名、移动、删除和生成公开 URL。
+上传表单使用浏览器原生的 `multipart/form-data`：
 
-文件列表直接读取磁盘，无需同步数据库。公开 URL 由公开域名与按段编码的相对路径组成；文件移动或改名后链接随之改变。
+```html
+<form method="post" enctype="multipart/form-data">
+  <input type="hidden" name="intent" value="upload" />
+  <input type="file" name="file" required />
+  <button type="submit">上传</button>
+</form>
+```
 
-## 4. 文件与请求流程
+不实现拖放区域、前端文件分片、上传进度或单独的上传接口。删除使用 POST 表单并携带 `intent=delete` 和文件名，界面在提交前显示确认提示。
 
-只需要两个数据目录，实际路径可配置：
+## 4. 文件存储
+
+配置两个目录，且两者位于同一个文件系统：
 
 | 目录示例 | 用途 |
 | --- | --- |
-| `/srv/sharebox/public` | 完整文件，应用可读写，Caddy 只读 |
-| `/srv/sharebox/tmp` | 上传中的临时文件，只有应用可访问 |
+| `/srv/sharebox/public` | 已完整上传、可公开下载的普通文件 |
+| `/srv/sharebox/tmp` | 上传中的临时文件，Caddy 不可访问 |
 
-**上传**：浏览器 → Caddy 认证 → 应用流式写入临时目录 → 完成校验 → 原子发布到公开目录 → 返回成功。两个目录放在同一文件系统；失败时清理临时文件，不能暴露半成品。
+公开根目录只允许一层普通文件。loader 忽略目录、符号链接和特殊文件；应用也拒绝创建或操作这些对象。
 
-**整理**：浏览器 → Caddy 认证 → 应用检查路径和名称冲突 → 执行文件操作 → 刷新目录。第一版拒绝同名覆盖，只删除空目录；写操作串行处理，外部导入避免并发修改相同目标。
+### 上传流程
 
-**下载**：访客 → Caddy → 公开目录。文件内容不经过应用；管理应用停止后，已有文件仍可下载。
+1. Caddy 验证 Basic Auth 后，将表单请求代理到管理应用。
+2. action 校验来源、文件名和大小限制。
+3. 应用以流方式将文件写入随机命名的临时文件。
+4. 写入完成后再次检查公开目录中不存在同名文件。
+5. 将临时文件原子移动到公开根目录，成功后返回操作结果。
+6. 任一步骤失败都清理临时文件，不修改已有同名文件。
 
-## 5. 必要约束
+### 删除流程
 
-- 文件操作限制在公开根目录内，拒绝路径穿越和符号链接；公开树中也不允许外部导入符号链接。
-- 上传设置大小限制并采用流式写入。同名检查与发布需防止并发覆盖，不能仅依赖普通 `rename`。
-- Caddy 和应用以非 root 用户运行；Caddy 无权写公开文件或读取临时目录。配置、密码哈希、日志和备份放在公开目录之外。
-- 管理端与公开端使用不同域名并启用 HTTPS。
-- Caddy 使用 `file_server browse`；配置时关闭索引文件查找，避免上传的 `index.html` 替代目录列表。文件服务规则见 [Caddy file_server 文档](https://caddyserver.com/docs/caddyfile/directives/file_server)。
+1. Caddy 验证 Basic Auth 后，将删除表单提交给管理应用。
+2. action 校验来源和文件名，确认目标是公开根目录内的普通文件。
+3. 删除目标文件并返回结果，React Router 随后刷新列表。
 
-实现后按需求文档验收，重点验证认证覆盖所有管理入口、上传失败不公开残缺文件、文件操作不越界，以及下载独立于管理应用。本次只调整设计文档，不包含实际部署。
+公开下载不经过管理应用。Caddy 直接从公开根目录读取文件，因此管理应用停止不会影响已有文件的下载。
+
+## 5. 安全与运行约束
+
+- Caddy 对管理域名下的全部请求应用 `basic_auth`；公开域名不认证。
+- Basic Auth 密码使用 `caddy hash-password` 生成哈希，配置中不保存明文密码。
+- 管理应用只监听 `127.0.0.1`，不能从公网绕过 Caddy 访问。
+- action 只接受 POST，并检查 `Origin` 与管理端来源一致。
+- 文件名必须是单个名称，拒绝绝对路径、路径分隔符、父目录引用、NUL、空名称和保留名称。
+- 文件操作不跟随符号链接；执行前检查目标仍是公开根目录内的普通文件。
+- 同名文件一律拒绝。上传发布必须避免检查与移动之间的并发覆盖。
+- Caddy 和管理应用均以非 root 用户运行；应用可读写公开目录，Caddy 仅可读取公开目录。
+- Caddy 使用 `file_server browse` 提供公开文件列表，并关闭索引文件查找，避免名为 `index.html` 的上传文件替代列表页。
+
+运行时只需 `caddy` 和 `sharebox` 两个服务。配置包含管理端域名、公开端域名、应用监听地址、公开目录、临时目录和上传大小限制。

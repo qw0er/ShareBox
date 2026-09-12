@@ -1,3 +1,5 @@
+import FolderOutlined from "@mui/icons-material/FolderOutlined";
+import Refresh from "@mui/icons-material/Refresh";
 import {
 	Box,
 	Button,
@@ -7,8 +9,6 @@ import {
 	Stack,
 	Typography,
 } from "@mui/material";
-import FolderOutlined from "@mui/icons-material/FolderOutlined";
-import Refresh from "@mui/icons-material/Refresh";
 import { useRevalidator } from "react-router";
 import type { FileNode } from "~/types/files";
 import FileTree from "./FileTree";
