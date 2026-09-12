@@ -1,19 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export type FileNode =
-	| {
-			name: string;
-			path: string;
-			type: "file";
-			size: number;
-	  }
-	| {
-			name: string;
-			path: string;
-			type: "directory";
-			children: FileNode[];
-	  };
+import type { FileNode } from "~/types/files";
 
 function isNotFoundError(error: unknown): boolean {
 	return (

@@ -1,0 +1,24 @@
+# 代码结构
+
+| 位置 | 职责 |
+| --- | --- |
+| `app/root.tsx` | HTML 文档、全局主题 Provider、路由出口和错误边界 |
+| `app/theme.ts` | MUI 颜色、字体和组件样式默认值 |
+| `app/routes/home.tsx` | 页面 loader/action 入口和组件组合 |
+| `app/components/layout/WorkspaceLayout.tsx` | 工作区页头、标题和双栏布局 |
+| `app/components/files/FileBrowser.tsx` | 文件浏览卡片、统计、刷新和空状态 |
+| `app/components/files/FileTree.tsx` | MUI 树视图的展开行为和样式 |
+| `app/components/files/FileTreeItem.tsx` | 递归生成目录、文件和空目录节点 |
+| `app/components/files/FileItemLabel.tsx` | 文件图标、名称、大小及操作入口 |
+| `app/components/files/DeleteFileButton.tsx` | 删除确认、提交状态和错误反馈 |
+| `app/components/upload/UploadPanel.tsx` | 待上传文件、上传请求和结果反馈 |
+| `app/components/upload/UploadDropzone.tsx` | 本地选择、拖放和单文件选择校验 |
+| `app/server/file-actions.server.ts` | 上传和删除表单的校验及执行 |
+| `app/server/core.server.ts` | 文件树读取和受目录边界约束的删除操作 |
+| `app/server/config.server.ts` | 存储目录配置及启动检查 |
+| `app/types/files.ts` | 前后端共享的文件节点类型 |
+| `app/utils/file-format.ts` | 文件大小格式化 |
+
+页面数据由 loader 提供；上传、删除通过 fetcher 调用路由 action，成功后由 React Router 重新加载文件树。展示组件不直接访问文件系统，上传组件也不依赖文件树的展示组件。
+
+文件树使用 `expansionTrigger="content"`，目录名称、图标和行内空白都能展开/收起。删除入口阻止鼠标和键盘事件向树节点冒泡，避免确认删除时意外切换目录展开状态。
