@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { loadEnvFile } from "node:process";
 
+loadEnvFile();
 if (!process.env.DATA_DIR) {
 	throw new Error("DATA_DIR environment variable is not set");
 }
