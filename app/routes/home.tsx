@@ -1,8 +1,10 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import MainPage from "~/MainPage";
+import { Typography } from "@mui/material";
+import FileTree from "~/components/FileTree";
+import UploadCom from "~/components/UploadCom";
 import { CONFIG } from "~/server/config.server";
-import { getFileTree } from "~/server/core.server";
+import { getFileTree, removeFileEntry } from "~/server/core.server";
 import type { Route } from "./+types/home";
 export function meta() {
 	return [
@@ -15,6 +17,43 @@ export async function loader() {
 }
 export async function action({ request }: Route.ActionArgs) {
 	const formData = await request.formData();
+	const intent = formData.get("intent");
+
+	if (intent === "remove") {
+		const relativePath = formData.get("path");
+		if (typeof relativePath !== "string") {
+			return { error: "Invalid file path" };
+		}
+
+		try {
+			await removeFileEntry(CONFIG.datadir, relativePath);
+			return { success: true };
+		} catch (error) {
+			const code =
+				error instanceof Error && "code" in error
+					? (error as NodeJS.ErrnoException).code
+					: undefined;
+
+			if (code === "ENOENT") {
+				return { error: "File or directory no longer exists" };
+			}
+			if (code === "ENOTEMPTY" || code === "EEXIST") {
+				return { error: "Directory is not empty" };
+			}
+			if (code === "EACCES" || code === "EPERM") {
+				return { error: "Permission denied" };
+			}
+			return {
+				error:
+					error instanceof Error ? error.message : "Unable to remove entry",
+			};
+		}
+	}
+
+	if (intent !== "upload") {
+		return { error: "Invalid action" };
+	}
+
 	const file = formData.get("file");
 	if (!(file instanceof File) || !file.name) {
 		return { error: "No file uploaded" };
@@ -28,5 +67,17 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Home({ actionData, loaderData }: Route.ComponentProps) {
-	return <MainPage actionData={actionData} fileTree={loaderData?.fileTree} />;
+	return (
+		<>
+			<Typography variant="h1">ShareBox</Typography>
+			<UploadCom />
+			{actionData?.success && (
+				<Typography color="primary">File uploaded successfully!</Typography>
+			)}
+			{actionData?.error && (
+				<Typography color="error">{actionData.error}</Typography>
+			)}
+			<FileTree fileTree={loaderData.fileTree} />
+		</>
+	);
 }

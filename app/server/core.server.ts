@@ -24,10 +24,22 @@ function isNotFoundError(error: unknown): boolean {
 }
 
 export async function getFileTree(dirPath: string): Promise<FileNode[]> {
+	const rootPath = path.resolve(dirPath);
+	return readFileTree(rootPath, rootPath);
+}
+
+async function readFileTree(
+	rootPath: string,
+	dirPath: string,
+): Promise<FileNode[]> {
 	const entries = await fs.readdir(dirPath, { withFileTypes: true });
 	const nodes = await Promise.all(
 		entries.map(async (entry): Promise<FileNode | null> => {
 			const fullPath = path.join(dirPath, entry.name);
+			const relativePath = path
+				.relative(rootPath, fullPath)
+				.split(path.sep)
+				.join("/");
 
 			try {
 				const stats = await fs.lstat(fullPath);
@@ -40,16 +52,16 @@ export async function getFileTree(dirPath: string): Promise<FileNode[]> {
 				if (stats.isDirectory()) {
 					return {
 						name: entry.name,
-						path: fullPath,
+						path: relativePath,
 						type: "directory",
-						children: await getFileTree(fullPath),
+						children: await readFileTree(rootPath, fullPath),
 					};
 				}
 
 				if (stats.isFile()) {
 					return {
 						name: entry.name,
-						path: fullPath,
+						path: relativePath,
 						type: "file",
 						size: stats.size,
 					};
@@ -74,4 +86,53 @@ export async function getFileTree(dirPath: string): Promise<FileNode[]> {
 			}
 			return left.name.localeCompare(right.name);
 		});
+}
+
+export async function removeFileEntry(
+	rootDir: string,
+	relativePath: string,
+): Promise<void> {
+	if (
+		!relativePath ||
+		path.isAbsolute(relativePath) ||
+		path.win32.isAbsolute(relativePath)
+	) {
+		throw new Error("Invalid file path");
+	}
+
+	const segments = relativePath.split(/[\\/]/);
+	if (
+		segments.some(
+			(segment) =>
+				!segment ||
+				segment === "." ||
+				segment === ".." ||
+				segment.includes("\0"),
+		)
+	) {
+		throw new Error("Invalid file path");
+	}
+
+	let targetPath = path.resolve(rootDir);
+	let targetStats: Awaited<ReturnType<typeof fs.lstat>> | undefined;
+
+	for (const segment of segments) {
+		targetPath = path.join(targetPath, segment);
+		targetStats = await fs.lstat(targetPath);
+		if (targetStats.isSymbolicLink()) {
+			throw new Error("Symbolic links are not supported");
+		}
+	}
+
+	if (targetStats?.isFile()) {
+		await fs.unlink(targetPath);
+		return;
+	}
+
+	if (targetStats?.isDirectory()) {
+		await fs.rmdir(targetPath);
+		return;
+	}
+
+	throw new Error("Unsupported file type");
 }
