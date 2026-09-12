@@ -1,5 +1,6 @@
 {
   "name": "sharebox",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,6 +13,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/material": "^9.4.0",
+    "@mui/x-tree-view": "^9.13.0",
     "@react-router/node": "^8",
     "@react-router/serve": "^8",
     "isbot": "^5.1.36",
