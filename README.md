@@ -1,87 +1,137 @@
-# Welcome to React Router!
+# ShareBox
 
-A modern, production-ready template for building full-stack React applications using React Router.
+ShareBox 是一个面向个人服务器的轻量文件管理与分享工具。管理员通过 React Router 管理页面上传、浏览和删除文件；公开文件可由 Caddy 直接提供目录浏览与下载。
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+当前仓库处于第一版开发阶段，重点是建立可用的管理界面和安全的本地文件树操作。产品边界见 [需求文档](docs/requirements.md)，目标部署方案见 [架构设计](docs/architecture.md)。
 
-## Features
+## 当前功能
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+- 在同一工作区浏览文件树和上传文件
+- 展开、收起多级目录，支持鼠标与键盘操作
+- 显示文件类型图标、文件大小和目录子项数量
+- 选择或拖放单个文件并显示上传状态
+- 删除文件和空目录，操作前显示确认对话框
+- 上传、删除或手动刷新后重新读取磁盘文件树
+- 忽略符号链接，并限制删除目标位于配置的数据目录内
+- 使用 MUI 组件、图标和响应式双栏布局
 
-## Getting Started
+当前上传会将文件一次性读入内存，同名文件会被覆盖。因此本实现还不适合直接处理不受信任的上传或超大文件。流式临时写入、原子发布、同名拒绝、新建目录、重命名、移动及复制公开链接仍属于后续工作。
 
-### Installation
+## 技术栈
 
-Install the dependencies:
+- Node.js、TypeScript
+- React 19
+- React Router Framework（SSR、loader/action、fetcher）
+- Material UI 与 MUI X Tree View
+- Vite
+
+## 快速开始
+
+### 环境要求
+
+- Node.js 22.22.0 或更高版本
+- npm
+- 一个已经存在、且当前用户可读写的数据目录
+
+### 安装与运行
 
 ```bash
-npm install
+npm ci
+mkdir -p ./data
+DATA_DIR="$PWD/data" npm run dev
 ```
 
-### Development
+开发服务器默认可通过 `http://localhost:5173` 访问。`DATA_DIR` 是必填的绝对或相对路径；应用启动时会检查该路径是否存在且为目录。
 
-Start the development server with HMR:
+可以先创建少量测试内容来查看多级文件树：
 
 ```bash
-npm run dev
+mkdir -p ./data/documents
+printf 'Hello ShareBox\n' > ./data/documents/example.txt
 ```
 
-Your application will be available at `http://localhost:5173`.
+## 常用命令
 
-## Building for Production
+| 命令 | 用途 |
+| --- | --- |
+| `npm run dev` | 启动带热更新的开发服务器 |
+| `npm run typecheck` | 生成路由类型并运行 TypeScript 检查 |
+| `npm run build` | 构建客户端和 SSR 服务端产物 |
+| `npm run start` | 运行 `build/server/index.js` 生产构建 |
+| `scripts/build_source.sh` | 重新安装依赖、构建并生成发布压缩包 |
 
-Create a production build:
+生产构建与运行示例：
 
 ```bash
+npm ci
+npm run typecheck
 npm run build
+DATA_DIR=/srv/sharebox/public npm run start
 ```
 
-## Deployment
+构建输出位于 `build/`：
 
-### Docker Deployment
-
-To build and run using Docker:
-
-```bash
-docker build -t my-app .
-
-# Run the container
-docker run -p 3000:3000 my-app
+```text
+build/
+├── client/   # 浏览器静态资源
+└── server/   # Node.js SSR 服务
 ```
 
-The containerized application can be deployed to any platform that supports Docker, including:
+运行 `scripts/build_source.sh` 会在 `dist/` 下生成 `sharebox-<version>.tar.gz`，其中包含 `build/`、`package.json` 和 `package-lock.json`。
 
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
+## 配置
 
-### DIY Deployment
+| 配置 | 必填 | 说明 |
+| --- | --- | --- |
+| `DATA_DIR` | 是 | ShareBox 浏览和修改的文件根目录；目录必须在启动前创建 |
 
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
+React Router 当前允许来自 `REMOVED` 的 action 请求。部署到其他管理域名时，需要同步修改 [react-router.config.ts](react-router.config.ts) 中的 `allowedActionOrigins`。
 
-Make sure to deploy the output of `npm run build`
+## 项目结构
 
+```text
+app/
+├── components/
+│   ├── files/       # 文件浏览卡片、树节点和删除交互
+│   ├── layout/      # 管理工作区页面布局
+│   └── upload/      # 上传面板和拖放选择区
+├── routes/          # React Router 路由、loader 和 action 入口
+├── server/          # 文件系统操作、表单处理与运行配置
+├── types/           # 前后端共享类型
+├── utils/           # 通用格式化函数
+├── root.tsx         # HTML 文档、主题 Provider 和错误边界
+└── theme.ts         # MUI 主题
 ```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
+
+页面 loader 从磁盘读取文件树；上传和删除通过 fetcher 提交给路由 action，成功后 React Router 自动重新验证 loader。更细的文件职责见 [代码结构说明](docs/code-structure.md)。
+
+## 部署思路
+
+目标部署由 Caddy 和 ShareBox 管理应用组成：
+
+```mermaid
+flowchart LR
+    Admin[管理员] -->|HTTPS + Basic Auth| Caddy[Caddy]
+    Caddy --> App[ShareBox 管理应用]
+    App -->|读写| Files[公开文件目录]
+    Visitor[访客] -->|HTTPS| Caddy
+    Caddy -->|只读文件服务| Files
 ```
 
-## Styling
+建议仅让 Node.js 服务监听本机地址，由 Caddy 负责 HTTPS、管理端 Basic Auth、反向代理以及公开文件下载。不要把配置、密码、日志、临时文件或备份放入 `DATA_DIR`。仓库目前没有可直接使用的 Caddyfile、systemd 服务或容器镜像；部署前请根据 [架构设计](docs/architecture.md) 补齐并验证这些配置。
 
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
+## 已知限制
 
----
+- 仅支持向根目录上传单个文件
+- 同名上传会覆盖现有文件
+- 上传使用内存缓冲，未实现大小限制、临时文件和原子发布
+- 只能删除文件或空目录
+- 尚未实现新建目录、重命名、移动和复制公开链接
+- 应用自身不提供认证，正式部署必须在反向代理层保护所有管理页面和写操作
+- 文件列表直接来自磁盘，没有数据库、搜索、标签、预览或审计记录
 
-Built with ❤️ using React Router.
+## 文档
+
+- [产品需求](docs/requirements.md)
+- [架构设计](docs/architecture.md)
+- [代码结构](docs/code-structure.md)
