@@ -171,9 +171,12 @@ else
 		"$service_user"
 fi
 
-install -d -m 0750 -o root -g "$service_group" "$state_dir"
-install -d -m 0750 -o "$service_user" -g "$service_group" "$data_dir"
+install -d -m 0755 -o "$service_user" -g "$service_group" "$state_dir"
+install -d -m 0755 -o "$service_user" -g "$service_group" "$data_dir"
 install -d -m 0750 -o "$service_user" -g "$service_group" "$state_dir/.npm-cache"
+chown -hR "$service_user:$service_group" "$data_dir"
+find "$data_dir" -type d -exec chmod 0755 {} +
+find "$data_dir" -type f -exec chmod 0644 {} +
 
 [[ ! -e "$previous_app" ]] ||
 	die "previous deployment backup exists; inspect and remove it before deploying: $previous_app"
@@ -243,7 +246,7 @@ ExecStart=$node_bin $app_dir/node_modules/@react-router/serve/dist/cli.js $app_d
 
 Restart=on-failure
 RestartSec=3
-UMask=0027
+UMask=0022
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

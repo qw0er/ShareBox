@@ -97,7 +97,7 @@ scripts/build_source.sh
 
 ### 服务器部署
 
-部署脚本默认创建或复用无登录系统用户 `sharebox`，将程序安装到 `/var/lib/sharebox/app`，将持久文件保存在 `/var/lib/sharebox/data`，并创建、启用和启动 `sharebox.service`：
+部署脚本默认创建或复用无登录系统用户 `sharebox`，将程序安装到 `/var/lib/sharebox/app`，将持久文件保存在 `/var/lib/sharebox/data`，并创建、启用和启动 `sharebox.service`。`/var/lib/sharebox` 和数据目录归 `sharebox:sharebox` 所有，目录权限为 `0755`；数据文件权限为 `0644`，可供 Caddy 等其他用户读取：
 
 ```bash
 sudo scripts/deploy_server.sh dist/sharebox-<version>.tar.gz
@@ -118,6 +118,7 @@ Environment=HOST=127.0.0.1
 Environment=PORT=8123
 Environment=DATA_DIR=/var/lib/sharebox/data
 ExecStart=/usr/bin/node /var/lib/sharebox/app/node_modules/@react-router/serve/dist/cli.js /var/lib/sharebox/app/build/server/index.js
+UMask=0022
 ```
 
 可通过 `SHAREBOX_USER`、`SHAREBOX_GROUP`、`SHAREBOX_STATE_DIR`、`SHAREBOX_HOST`、`SHAREBOX_PORT` 和 `SHAREBOX_SERVICE_NAME` 覆盖默认值。为避免误删，程序目录固定为 `<SHAREBOX_STATE_DIR>/app`，数据目录固定为 `<SHAREBOX_STATE_DIR>/data`。
