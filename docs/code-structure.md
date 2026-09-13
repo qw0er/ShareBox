@@ -15,8 +15,9 @@
 | `app/components/upload/UploadPanel.tsx` | 待上传文件、上传请求和结果反馈 |
 | `app/components/upload/UploadDropzone.tsx` | 本地选择、拖放和单文件选择校验 |
 | `app/server/file-actions.server.ts` | 上传和删除表单的校验及执行 |
+| `app/server/upload.server.ts` | 流式表单解析、大小限制、私有临时文件、同名拒绝与原子发布 |
 | `app/server/core.server.ts` | 文件树读取和受目录边界约束的删除操作 |
-| `app/server/config.server.ts` | 存储目录配置及启动检查 |
+| `app/server/config.server.ts` | 存储目录、临时目录、上传限额与来源配置及启动检查 |
 | `app/server/logger.server.ts` | Pino 服务端日志实例，直接写入标准输出 |
 | `app/server/*.test.ts` | 文件系统核心与 action 的服务端测试 |
 | `app/types/files.ts` | 前后端共享的文件节点类型 |
@@ -27,3 +28,5 @@
 页面数据由 loader 提供；上传、删除通过 fetcher 调用路由 action，成功后由 React Router 重新加载文件树。展示组件不直接访问文件系统，上传组件也不依赖文件树的展示组件。
 
 文件树使用 `expansionTrigger="content"`，目录名称、图标和行内空白都能展开/收起。删除入口阻止鼠标和键盘事件向树节点冒泡，避免确认删除时意外切换目录展开状态。
+
+部署示例位于根目录 `Caddyfile.example`；管理端认证与公开文件服务独立配置。

@@ -13,6 +13,7 @@ function isNotFoundError(error: unknown): boolean {
 
 export async function getFileTree(dirPath: string): Promise<FileNode[]> {
 	const rootPath = path.resolve(dirPath);
+	await checkRootDirectory(rootPath);
 	return readFileTree(rootPath, rootPath);
 }
 
@@ -102,6 +103,7 @@ export async function removeFileEntry(
 	}
 
 	let targetPath = path.resolve(rootDir);
+	await checkRootDirectory(targetPath);
 	let targetStats: Awaited<ReturnType<typeof fs.lstat>> | undefined;
 
 	for (const segment of segments) {
@@ -123,4 +125,10 @@ export async function removeFileEntry(
 	}
 
 	throw new Error("Unsupported file type");
+}
+
+async function checkRootDirectory(rootPath: string) {
+	const stats = await fs.lstat(rootPath);
+	if (!stats.isDirectory() || stats.isSymbolicLink())
+		throw new Error("Invalid data directory");
 }

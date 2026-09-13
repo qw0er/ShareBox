@@ -8,6 +8,7 @@ service_group="${SHAREBOX_GROUP:-$service_user}"
 state_dir="${SHAREBOX_STATE_DIR:-/var/lib/sharebox}"
 app_dir="${SHAREBOX_APP_DIR:-$state_dir/app}"
 data_dir="${SHAREBOX_DATA_DIR:-$state_dir/data}"
+upload_limit="${SHAREBOX_MAX_UPLOAD_BYTES:-1073741824}"
 listen_host="${SHAREBOX_HOST:-127.0.0.1}"
 listen_port="${SHAREBOX_PORT:-8123}"
 unit_file="/etc/systemd/system/${service_name}.service"
@@ -39,6 +40,7 @@ Optional environment variables:
   SHAREBOX_STATE_DIR        State root (default: /var/lib/sharebox)
   SHAREBOX_APP_DIR          Application directory (default: <state>/app)
   SHAREBOX_DATA_DIR         Persistent data directory (default: <state>/data)
+  SHAREBOX_MAX_UPLOAD_BYTES Upload byte limit (default: 1073741824)
   SHAREBOX_HOST             Listen address (default: 127.0.0.1)
   SHAREBOX_PORT             Listen port (default: 8123)
   SHAREBOX_SERVICE_NAME     systemd service name (default: sharebox)
@@ -146,6 +148,7 @@ done < <(tar -tzf "$archive_path")
 [[ "$listen_host" != *[[:space:]]* ]] || die "listen address must not contain whitespace"
 [[ "$listen_port" =~ ^[0-9]+$ ]] && ((listen_port >= 1 && listen_port <= 65535)) ||
 	die "invalid listen port: $listen_port"
+[[ "$upload_limit" =~ ^[0-9]+$ ]] || die "invalid upload limit"
 node_bin="$(command -v node)"
 npm_bin="$(command -v npm)"
 node_major="$($node_bin -p 'Number(process.versions.node.split(".")[0])')"
@@ -173,6 +176,7 @@ fi
 
 install -d -m 0755 -o "$service_user" -g "$service_group" "$state_dir"
 install -d -m 0755 -o "$service_user" -g "$service_group" "$data_dir"
+install -d -m 0700 -o "$service_user" -g "$service_group" "$state_dir/tmp"
 install -d -m 0750 -o "$service_user" -g "$service_group" "$state_dir/.npm-cache"
 chown -hR "$service_user:$service_group" "$data_dir"
 find "$data_dir" -type d -exec chmod 0755 {} +
@@ -206,7 +210,7 @@ runuser --user "$service_user" -- \
 
 echo "Validating the server build..."
 runuser --user "$service_user" -- \
-	env DATA_DIR="$data_dir" LOGGER_LEVEL=silent \
+	env DATA_DIR="$data_dir" UPLOAD_TMP_DIR="$state_dir/tmp" MAX_UPLOAD_BYTES="$upload_limit" LOGGER_LEVEL=silent \
 	"$node_bin" --input-type=module -e '
 		import { pathToFileURL } from "node:url";
 		const [buildPath] = process.argv.slice(1);
@@ -241,6 +245,8 @@ Environment=NODE_ENV=production
 Environment=HOST=$listen_host
 Environment=PORT=$listen_port
 Environment=DATA_DIR=$data_dir
+Environment=UPLOAD_TMP_DIR=$state_dir/tmp
+Environment=MAX_UPLOAD_BYTES=$upload_limit
 
 ExecStart=$node_bin $app_dir/node_modules/@react-router/serve/dist/cli.js $app_dir/build/server/index.js
 
@@ -251,7 +257,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=$data_dir
+ReadWritePaths=$data_dir $state_dir/tmp
 
 [Install]
 WantedBy=multi-user.target

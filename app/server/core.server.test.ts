@@ -110,4 +110,29 @@ describe("file system core", () => {
 		);
 		await expect(readFile(targetPath, "utf8")).resolves.toBe("keep");
 	});
+	it("rejects symbolic roots for listing and deletion", async () => {
+		await mkdir(path.join(rootDir, "real"));
+		await writeFile(path.join(rootDir, "real", "keep"), "original");
+		await symlink(path.join(rootDir, "real"), path.join(rootDir, "alias"));
+		await expect(getFileTree(path.join(rootDir, "alias"))).rejects.toThrow(
+			"Invalid data directory",
+		);
+		await expect(
+			removeFileEntry(path.join(rootDir, "alias"), "keep"),
+		).rejects.toThrow("Invalid data directory");
+		expect(await readFile(path.join(rootDir, "real", "keep"), "utf8")).toBe(
+			"original",
+		);
+	});
+	it("rejects deletion through a symbolic parent directory", async () => {
+		await mkdir(path.join(rootDir, "real"));
+		await writeFile(path.join(rootDir, "real", "keep"), "original");
+		await symlink(path.join(rootDir, "real"), path.join(rootDir, "alias"));
+		await expect(removeFileEntry(rootDir, "alias/keep")).rejects.toThrow(
+			"Symbolic links",
+		);
+		expect(await readFile(path.join(rootDir, "real", "keep"), "utf8")).toBe(
+			"original",
+		);
+	});
 });

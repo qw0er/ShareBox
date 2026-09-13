@@ -15,7 +15,11 @@ import type { action } from "~/routes/home";
 import { formatSize } from "~/utils/file-format";
 import UploadDropzone from "./UploadDropzone";
 
-export default function UploadPanel() {
+export default function UploadPanel({
+	maxUploadBytes,
+}: {
+	maxUploadBytes: number;
+}) {
 	const fetcher = useFetcher<typeof action>();
 	const [file, setFile] = useState<File | null>(null);
 	const busy = fetcher.state !== "idle";
@@ -95,7 +99,8 @@ export default function UploadPanel() {
 					{busy ? "上传中…" : "上传文件"}
 				</Button>
 				<Typography variant="caption" color="text.secondary">
-					每次上传一个文件。当前同名文件会被覆盖，请先确认文件名称。
+					每次上传一个文件，最大 {formatSize(maxUploadBytes)}
+					。同名文件会被拒绝，不覆盖已有内容。
 				</Typography>
 			</Stack>
 		</Paper>

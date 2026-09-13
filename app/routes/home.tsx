@@ -25,7 +25,7 @@ export async function loader() {
 			},
 			"File tree loaded",
 		);
-		return { fileTree };
+		return { fileTree, maxUploadBytes: CONFIG.maxUploadBytes };
 	} catch (error) {
 		logger.error(
 			{
@@ -46,7 +46,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 	return (
 		<WorkspaceLayout>
 			<FileBrowser fileTree={loaderData.fileTree} />
-			<UploadPanel />
+			<UploadPanel maxUploadBytes={loaderData.maxUploadBytes} />
 		</WorkspaceLayout>
 	);
 }

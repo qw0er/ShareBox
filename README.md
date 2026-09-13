@@ -16,7 +16,7 @@ ShareBox 是一个面向个人服务器的轻量文件管理与分享工具。�
 - 未捕获的路由和渲染异常通过全局弹窗提示，并支持重新加载
 - 使用 MUI 组件、图标和响应式双栏布局
 
-当前上传会将文件一次性读入内存，同名文件会被覆盖。因此本实现还不适合直接处理不受信任的上传或超大文件。流式临时写入、原子发布、同名拒绝、新建目录、重命名、移动及复制公开链接仍属于后续工作。
+上传以流方式写入公开目录之外的临时文件，检查大小和表单完整性后原子发布；同名文件、目录和符号链接均拒绝覆盖。新建目录、重命名、移动及复制公开链接不属于当前版本。
 
 ## 技术栈
 
@@ -43,7 +43,7 @@ mkdir -p ./data
 DATA_DIR="$PWD/data" npm run dev
 ```
 
-开发服务器默认可通过 `http://localhost:5173` 访问。`DATA_DIR` 是必填的绝对或相对路径；应用启动时会检查该路径是否存在且为目录。
+开发服务器默认可通过 `http://localhost:5173` 访问。`DATA_DIR` 是必填的绝对或相对路径；应用启动时会检查该路径是否存在且为非符号链接目录。上传临时目录默认是数据目录真实路径加 `.tmp`，应用需有创建和写入权限，也可通过 `UPLOAD_TMP_DIR` 指定同一文件系统的独立目录。
 
 可以先创建少量测试内容来查看多级文件树：
 
@@ -117,17 +117,21 @@ WorkingDirectory=/var/lib/sharebox/app
 Environment=HOST=127.0.0.1
 Environment=PORT=8123
 Environment=DATA_DIR=/var/lib/sharebox/data
+Environment=UPLOAD_TMP_DIR=/var/lib/sharebox/tmp
+Environment=MAX_UPLOAD_BYTES=1073741824
 ExecStart=/usr/bin/node /var/lib/sharebox/app/node_modules/@react-router/serve/dist/cli.js /var/lib/sharebox/app/build/server/index.js
 UMask=0022
 ```
 
-可通过 `SHAREBOX_USER`、`SHAREBOX_GROUP`、`SHAREBOX_STATE_DIR`、`SHAREBOX_HOST`、`SHAREBOX_PORT` 和 `SHAREBOX_SERVICE_NAME` 覆盖默认值。为避免误删，程序目录固定为 `<SHAREBOX_STATE_DIR>/app`，数据目录固定为 `<SHAREBOX_STATE_DIR>/data`。
+可通过 `SHAREBOX_USER`、`SHAREBOX_GROUP`、`SHAREBOX_STATE_DIR`、`SHAREBOX_HOST`、`SHAREBOX_PORT` 、`SHAREBOX_MAX_UPLOAD_BYTES` 和 `SHAREBOX_SERVICE_NAME` 覆盖默认值。为避免误删，程序目录固定为 `<SHAREBOX_STATE_DIR>/app`，数据目录固定为 `<SHAREBOX_STATE_DIR>/data`。
 
 ## 配置
 
 | 配置 | 必填 | 说明 |
 | --- | --- | --- |
 | `DATA_DIR` | 是 | ShareBox 浏览和修改的文件根目录；目录必须在启动前创建 |
+| `UPLOAD_TMP_DIR` | 否 | 私有上传临时目录，默认 `<DATA_DIR 的真实路径>.tmp`，不得与公开目录重叠，必须位于同一文件系统 |
+| `MAX_UPLOAD_BYTES` | 否 | 单文件大小上限，默认 `1073741824`（1 GiB），必须为正安全整数 |
 | `LOGGER_LEVEL` | 否 | Pino 日志级别，默认 `info` |
 
 应用以 JSON Lines 格式将启动、文件列表读取、上传、删除和相关错误日志直接写入标准输出，不创建日志文件。生产环境可由 systemd、容器运行时或其他进程管理器负责采集和保留日志。
@@ -165,13 +169,23 @@ flowchart LR
     Caddy -->|只读文件服务| Files
 ```
 
-建议仅让 Node.js 服务监听本机地址，由 Caddy 负责 HTTPS、管理端 Basic Auth、反向代理以及公开文件下载。不要把配置、密码、日志、临时文件或备份放入 `DATA_DIR`。部署脚本会生成 systemd unit；仓库目前没有可直接使用的 Caddyfile 或容器镜像，部署前请根据 [架构设计](docs/architecture.md) 补齐并验证这些配置。
+建议仅让 Node.js 服务监听本机地址，由 Caddy 负责 HTTPS、管理端 Basic Auth、反向代理以及公开文件下载。不要把配置、密码、日志、临时文件或备份放入 `DATA_DIR`。部署脚本会生成 systemd unit，并创建权限为 `0700` 的 `/var/lib/sharebox/tmp` 作为私有上传目录。非 root、仅监听本机和供独立 Caddy 用户只读访问的文件权限是脚本默认值，不作为产品验收约束。
+
+示例见 [Caddyfile.example](Caddyfile.example)：替换两个域名、用户名和密码哈希，确认公开端 root 与 DATA_DIR 一致。使用 `caddy hash-password` 交互生成哈希，然后运行：
+
+```bash
+caddy validate --config Caddyfile.example --adapter caddyfile
+```
+
+域名 DNS 应指向服务器，并使 Caddy 可用 HTTP/HTTPS 端口完成自动证书管理。构建时 `.env` 的 `USER_URL` 必须与管理域名一致，不含协议或路径。公开端直接读取数据目录，不代理至管理应用；`index ""` 使上传的 `index.html` 不会替代目录列表。不要通过服务器向公开目录放入符号链接，Caddy 可跟随它们访问目标。
+
+Caddy 认证、HTTPS、公开浏览下载和管理应用停止后的下载能力已由部署者手动验证（2026-09-13）。
 
 ## 已知限制
 
 - 仅支持向根目录上传单个文件
-- 同名上传会覆盖现有文件
-- 上传使用内存缓冲，未实现大小限制、临时文件和原子发布
+- 同名上传拒绝覆盖
+- 不提供百分比上传进度、分块上传或断点续传；进程被强制终止时可能留下私有临时文件，停止应用后可检查和清理临时目录
 - 只能删除文件或空目录
 - 尚未实现新建目录、重命名、移动和复制公开链接
 - 应用自身不提供认证，正式部署必须在反向代理层保护所有管理页面和写操作

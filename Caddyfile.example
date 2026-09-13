@@ -1,0 +1,18 @@
+# Replace both domains, the username, and the password hash before use.
+# Generate the hash with: caddy hash-password
+# USER_URL in ShareBox's build-time .env must match admin.example.com.
+admin.example.com {
+	basic_auth {
+		admin REPLACE_WITH_CADDY_PASSWORD_HASH
+	}
+	reverse_proxy 127.0.0.1:8123
+}
+
+files.example.com {
+	# Must match ShareBox DATA_DIR. Never point this at the app or tmp directory.
+	root * /var/lib/sharebox/data
+	file_server browse {
+		# An empty index name prevents index.html/index.txt from replacing the list.
+		index ""
+	}
+}
