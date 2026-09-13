@@ -44,7 +44,7 @@ DATA_DIR="$project_dir" LOGGER_LEVEL=silent node --input-type=module -e '
     ? build.allowedActionOrigins.filter(Boolean)
     : [];
   if (origins.length === 0) {
-    console.error("Error: USER_URL was not embedded in the build. Set it to the management host before packaging.");
+    console.error("Error: USER_URL from .env was not embedded in the build. Check .env before packaging.");
     process.exit(1);
   }
   console.log(`Allowed action origins: ${origins.join(", ")}`);

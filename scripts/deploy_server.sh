@@ -10,7 +10,6 @@ app_dir="${SHAREBOX_APP_DIR:-$state_dir/app}"
 data_dir="${SHAREBOX_DATA_DIR:-$state_dir/data}"
 listen_host="${SHAREBOX_HOST:-127.0.0.1}"
 listen_port="${SHAREBOX_PORT:-8123}"
-expected_origin="${SHAREBOX_EXPECTED_ORIGIN:-}"
 unit_file="/etc/systemd/system/${service_name}.service"
 
 staging_root=""
@@ -35,7 +34,6 @@ Usage:
   sudo scripts/deploy_server.sh <sharebox-package.tar.gz>
 
 Optional environment variables:
-  SHAREBOX_EXPECTED_ORIGIN  Expected host baked into allowedActionOrigins
   SHAREBOX_USER             Service user (default: sharebox)
   SHAREBOX_GROUP            Service group (default: same as user)
   SHAREBOX_STATE_DIR        State root (default: /var/lib/sharebox)
@@ -148,11 +146,6 @@ done < <(tar -tzf "$archive_path")
 [[ "$listen_host" != *[[:space:]]* ]] || die "listen address must not contain whitespace"
 [[ "$listen_port" =~ ^[0-9]+$ ]] && ((listen_port >= 1 && listen_port <= 65535)) ||
 	die "invalid listen port: $listen_port"
-if [[ -n "$expected_origin" ]]; then
-	[[ "$expected_origin" != *"://"* && "$expected_origin" != */* ]] ||
-		die "SHAREBOX_EXPECTED_ORIGIN must be a host, without scheme or path"
-fi
-
 node_bin="$(command -v node)"
 npm_bin="$(command -v npm)"
 node_major="$($node_bin -p 'Number(process.versions.node.split(".")[0])')"
@@ -213,21 +206,17 @@ runuser --user "$service_user" -- \
 	env DATA_DIR="$data_dir" LOGGER_LEVEL=silent \
 	"$node_bin" --input-type=module -e '
 		import { pathToFileURL } from "node:url";
-		const [buildPath, expectedOrigin] = process.argv.slice(1);
+		const [buildPath] = process.argv.slice(1);
 		const build = await import(pathToFileURL(buildPath).href);
 		const origins = Array.isArray(build.allowedActionOrigins)
 			? build.allowedActionOrigins.filter(Boolean)
 			: [];
 		if (origins.length === 0) {
-			console.error("The package has no allowedActionOrigins. Rebuild it with USER_URL set.");
-			process.exit(1);
-		}
-		if (expectedOrigin && !origins.includes(expectedOrigin)) {
-			console.error(`Expected origin ${expectedOrigin}, package contains: ${origins.join(", ")}`);
+			console.error("The package has no allowedActionOrigins. Check USER_URL in .env and rebuild it.");
 			process.exit(1);
 		}
 		console.log(`Allowed action origins: ${origins.join(", ")}`);
-	' "$staging_app/build/server/index.js" "$expected_origin"
+	' "$staging_app/build/server/index.js"
 
 chown -hR "root:$service_group" "$staging_app"
 chmod -R u=rwX,g=rX,o= "$staging_app"

@@ -81,24 +81,29 @@ build/
 └── server/   # Node.js SSR 服务
 ```
 
-设置构建时允许提交 action 的管理端主机名后运行打包脚本：
+在项目 `.env` 中配置允许提交 action 的管理端主机名：
 
-```bash
-USER_URL=管理端域名 scripts/build_source.sh
+```dotenv
+USER_URL=管理端域名
 ```
 
-脚本会检查 `USER_URL` 已写入生产构建，并在 `dist/` 下生成 `sharebox-<version>.tar.gz`，其中包含 `build/`、`package.json` 和 `package-lock.json`。
+直接运行打包脚本即可：
+
+```bash
+scripts/build_source.sh
+```
+
+脚本只负责检查 `.env` 中的 `USER_URL` 已写入生产构建，并在 `dist/` 下生成 `sharebox-<version>.tar.gz`，其中包含 `build/`、`package.json` 和 `package-lock.json`。
 
 ### 服务器部署
 
 部署脚本默认创建或复用无登录系统用户 `sharebox`，将程序安装到 `/var/lib/sharebox/app`，将持久文件保存在 `/var/lib/sharebox/data`，并创建、启用和启动 `sharebox.service`：
 
 ```bash
-sudo SHAREBOX_EXPECTED_ORIGIN=管理端域名 \
-  scripts/deploy_server.sh dist/sharebox-<version>.tar.gz
+sudo scripts/deploy_server.sh dist/sharebox-<version>.tar.gz
 ```
 
-压缩包必须在构建时通过 `USER_URL=管理端域名` 写入允许提交 action 的主机名。部署脚本会检查该值，拒绝安装 `allowedActionOrigins` 为空或与 `SHAREBOX_EXPECTED_ORIGIN` 不符的包。
+压缩包必须已经从 `.env` 写入允许提交 action 的主机名。部署脚本只检查构建产物中的 `allowedActionOrigins` 非空，不再要求输入域名。
 
 重复运行会完整替换程序目录，因此旧版本遗留文件不会保留；`/var/lib/sharebox/data` 始终保留。脚本先在临时目录安装生产依赖，切换版本后再启动服务；如果新服务启动失败，会恢复原程序和原 systemd unit。旧的 `/srv/share` 数据不会自动迁移，应在首次部署前单独复制并核对。
 
@@ -126,7 +131,7 @@ ExecStart=/usr/bin/node /var/lib/sharebox/app/node_modules/@react-router/serve/d
 
 应用以 JSON Lines 格式将启动、文件列表读取、上传、删除和相关错误日志直接写入标准输出，不创建日志文件。生产环境可由 systemd、容器运行时或其他进程管理器负责采集和保留日志。
 
-React Router 当前允许来自 `REMOVED` 的 action 请求。部署到其他管理域名时，需要同步修改 [react-router.config.ts](react-router.config.ts) 中的 `allowedActionOrigins`。
+React Router 从 `.env` 的 `USER_URL` 读取并构建允许提交 action 的主机名。修改管理域名后必须重新构建发布包。
 
 ## 项目结构
 
