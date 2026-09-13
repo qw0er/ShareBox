@@ -1,8 +1,7 @@
-import { loadEnvFile } from "node:process";
-
 import pino from "pino";
+import { loadEnv } from "./config.server";
 
-loadEnvFile();
+loadEnv();
 
 export const LOGGER_LEVEL = process.env.LOGGER_LEVEL || "info";
 
