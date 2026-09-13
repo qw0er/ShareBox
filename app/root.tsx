@@ -13,6 +13,7 @@ import { theme } from "~/theme";
 import type { Route } from "./+types/root";
 
 export const links: Route.LinksFunction = () => [
+	{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
 	{ rel: "preconnect", href: "https://fonts.googleapis.com" },
 	{
 		rel: "preconnect",
