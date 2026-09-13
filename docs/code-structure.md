@@ -21,6 +21,8 @@
 | `app/server/*.test.ts` | 文件系统核心与 action 的服务端测试 |
 | `app/types/files.ts` | 前后端共享的文件节点类型 |
 | `app/utils/file-format.ts` | 文件大小格式化 |
+| `scripts/build_source.sh` | 构建、校验并生成生产发布包 |
+| `scripts/deploy_server.sh` | 在 Linux 服务器创建隔离用户、替换程序并管理 systemd 服务 |
 
 页面数据由 loader 提供；上传、删除通过 fetcher 调用路由 action，成功后由 React Router 重新加载文件树。展示组件不直接访问文件系统，上传组件也不依赖文件树的展示组件。
 

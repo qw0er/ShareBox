@@ -36,6 +36,20 @@ if [[ ! -d "$build_dir" ]]; then
   exit 1
 fi
 
+echo "Validating allowed action origins..."
+DATA_DIR="$project_dir" LOGGER_LEVEL=silent node --input-type=module -e '
+  import { pathToFileURL } from "node:url";
+  const build = await import(pathToFileURL(process.argv[1]).href);
+  const origins = Array.isArray(build.allowedActionOrigins)
+    ? build.allowedActionOrigins.filter(Boolean)
+    : [];
+  if (origins.length === 0) {
+    console.error("Error: USER_URL was not embedded in the build. Set it to the management host before packaging.");
+    process.exit(1);
+  }
+  console.log(`Allowed action origins: ${origins.join(", ")}`);
+' "$build_dir/server/index.js"
+
 echo "Creating package..."
 mkdir -p "$output_dir"
 tar -czf "$package_file" build package.json package-lock.json

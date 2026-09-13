@@ -62,6 +62,7 @@ printf 'Hello ShareBox\n' > ./data/documents/example.txt
 | `npm run build` | 构建客户端和 SSR 服务端产物 |
 | `npm run start` | 运行 `build/server/index.js` 生产构建 |
 | `scripts/build_source.sh` | 重新安装依赖、构建并生成发布压缩包 |
+| `scripts/deploy_server.sh <包>` | 在 Linux 服务器部署或更新生产包（需要 root） |
 
 生产构建与运行示例：
 
@@ -80,7 +81,41 @@ build/
 └── server/   # Node.js SSR 服务
 ```
 
-运行 `scripts/build_source.sh` 会在 `dist/` 下生成 `sharebox-<version>.tar.gz`，其中包含 `build/`、`package.json` 和 `package-lock.json`。
+设置构建时允许提交 action 的管理端主机名后运行打包脚本：
+
+```bash
+USER_URL=管理端域名 scripts/build_source.sh
+```
+
+脚本会检查 `USER_URL` 已写入生产构建，并在 `dist/` 下生成 `sharebox-<version>.tar.gz`，其中包含 `build/`、`package.json` 和 `package-lock.json`。
+
+### 服务器部署
+
+部署脚本默认创建或复用无登录系统用户 `sharebox`，将程序安装到 `/var/lib/sharebox/app`，将持久文件保存在 `/var/lib/sharebox/data`，并创建、启用和启动 `sharebox.service`：
+
+```bash
+sudo SHAREBOX_EXPECTED_ORIGIN=管理端域名 \
+  scripts/deploy_server.sh dist/sharebox-<version>.tar.gz
+```
+
+压缩包必须在构建时通过 `USER_URL=管理端域名` 写入允许提交 action 的主机名。部署脚本会检查该值，拒绝安装 `allowedActionOrigins` 为空或与 `SHAREBOX_EXPECTED_ORIGIN` 不符的包。
+
+重复运行会完整替换程序目录，因此旧版本遗留文件不会保留；`/var/lib/sharebox/data` 始终保留。脚本先在临时目录安装生产依赖，切换版本后再启动服务；如果新服务启动失败，会恢复原程序和原 systemd unit。旧的 `/srv/share` 数据不会自动迁移，应在首次部署前单独复制并核对。
+
+默认生成的 unit 等价于：
+
+```ini
+[Service]
+User=sharebox
+Group=sharebox
+WorkingDirectory=/var/lib/sharebox/app
+Environment=HOST=127.0.0.1
+Environment=PORT=8123
+Environment=DATA_DIR=/var/lib/sharebox/data
+ExecStart=/usr/bin/node /var/lib/sharebox/app/node_modules/@react-router/serve/dist/cli.js /var/lib/sharebox/app/build/server/index.js
+```
+
+可通过 `SHAREBOX_USER`、`SHAREBOX_GROUP`、`SHAREBOX_STATE_DIR`、`SHAREBOX_HOST`、`SHAREBOX_PORT` 和 `SHAREBOX_SERVICE_NAME` 覆盖默认值。为避免误删，程序目录固定为 `<SHAREBOX_STATE_DIR>/app`，数据目录固定为 `<SHAREBOX_STATE_DIR>/data`。
 
 ## 配置
 
@@ -124,7 +159,7 @@ flowchart LR
     Caddy -->|只读文件服务| Files
 ```
 
-建议仅让 Node.js 服务监听本机地址，由 Caddy 负责 HTTPS、管理端 Basic Auth、反向代理以及公开文件下载。不要把配置、密码、日志、临时文件或备份放入 `DATA_DIR`。仓库目前没有可直接使用的 Caddyfile、systemd 服务或容器镜像；部署前请根据 [架构设计](docs/architecture.md) 补齐并验证这些配置。
+建议仅让 Node.js 服务监听本机地址，由 Caddy 负责 HTTPS、管理端 Basic Auth、反向代理以及公开文件下载。不要把配置、密码、日志、临时文件或备份放入 `DATA_DIR`。部署脚本会生成 systemd unit；仓库目前没有可直接使用的 Caddyfile 或容器镜像，部署前请根据 [架构设计](docs/architecture.md) 补齐并验证这些配置。
 
 ## 已知限制
 
