@@ -13,6 +13,7 @@ ShareBox 是一个面向个人服务器的轻量文件管理与分享工具。�
 - 删除文件和空目录，操作前显示确认对话框
 - 上传、删除或手动刷新后重新读取磁盘文件树
 - 忽略符号链接，并限制删除目标位于配置的数据目录内
+- 未捕获的路由和渲染异常通过全局弹窗提示，并支持重新加载
 - 使用 MUI 组件、图标和响应式双栏布局
 
 当前上传会将文件一次性读入内存，同名文件会被覆盖。因此本实现还不适合直接处理不受信任的上传或超大文件。流式临时写入、原子发布、同名拒绝、新建目录、重命名、移动及复制公开链接仍属于后续工作。
@@ -23,6 +24,7 @@ ShareBox 是一个面向个人服务器的轻量文件管理与分享工具。�
 - React 19
 - React Router Framework（SSR、loader/action、fetcher）
 - Material UI 与 MUI X Tree View
+- Pino 结构化日志
 - Vite
 
 ## 快速开始
@@ -55,6 +57,7 @@ printf 'Hello ShareBox\n' > ./data/documents/example.txt
 | 命令 | 用途 |
 | --- | --- |
 | `npm run dev` | 启动带热更新的开发服务器 |
+| `npm test` | 运行服务端单元测试 |
 | `npm run typecheck` | 生成路由类型并运行 TypeScript 检查 |
 | `npm run build` | 构建客户端和 SSR 服务端产物 |
 | `npm run start` | 运行 `build/server/index.js` 生产构建 |
@@ -84,6 +87,9 @@ build/
 | 配置 | 必填 | 说明 |
 | --- | --- | --- |
 | `DATA_DIR` | 是 | ShareBox 浏览和修改的文件根目录；目录必须在启动前创建 |
+| `LOGGER_LEVEL` | 否 | Pino 日志级别，默认 `info` |
+
+应用以 JSON Lines 格式将启动、文件列表读取、上传、删除和相关错误日志直接写入标准输出，不创建日志文件。生产环境可由 systemd、容器运行时或其他进程管理器负责采集和保留日志。
 
 React Router 当前允许来自 `REMOVED` 的 action 请求。部署到其他管理域名时，需要同步修改 [react-router.config.ts](react-router.config.ts) 中的 `allowedActionOrigins`。
 

@@ -4,6 +4,7 @@ import UploadPanel from "~/components/upload/UploadPanel";
 import { CONFIG } from "~/server/config.server";
 import { getFileTree } from "~/server/core.server";
 import { handleFileAction } from "~/server/file-actions.server";
+import { logger } from "~/server/logger.server";
 import type { Route } from "./+types/home";
 
 export function meta() {
@@ -13,7 +14,29 @@ export function meta() {
 	];
 }
 export async function loader() {
-	return { fileTree: await getFileTree(CONFIG.datadir) };
+	const startedAt = Date.now();
+	try {
+		const fileTree = await getFileTree(CONFIG.datadir);
+		logger.info(
+			{
+				component: "file-browser",
+				rootEntries: fileTree.length,
+				durationMs: Date.now() - startedAt,
+			},
+			"File tree loaded",
+		);
+		return { fileTree };
+	} catch (error) {
+		logger.error(
+			{
+				err: error,
+				component: "file-browser",
+				durationMs: Date.now() - startedAt,
+			},
+			"Unable to load file tree",
+		);
+		throw error;
+	}
 }
 export async function action({ request }: Route.ActionArgs) {
 	return handleFileAction(request);

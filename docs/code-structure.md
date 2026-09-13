@@ -6,6 +6,7 @@
 | `app/theme.ts` | MUI 颜色、字体和组件样式默认值 |
 | `app/routes/home.tsx` | 页面 loader/action 入口和组件组合 |
 | `app/components/layout/WorkspaceLayout.tsx` | 工作区页头、标题和双栏布局 |
+| `app/components/feedback/GlobalErrorDialog.tsx` | 未捕获路由异常的全局弹窗与恢复入口 |
 | `app/components/files/FileBrowser.tsx` | 文件浏览卡片、统计、刷新和空状态 |
 | `app/components/files/FileTree.tsx` | MUI 树视图的展开行为和样式 |
 | `app/components/files/FileTreeItem.tsx` | 递归生成目录、文件和空目录节点 |
@@ -16,6 +17,8 @@
 | `app/server/file-actions.server.ts` | 上传和删除表单的校验及执行 |
 | `app/server/core.server.ts` | 文件树读取和受目录边界约束的删除操作 |
 | `app/server/config.server.ts` | 存储目录配置及启动检查 |
+| `app/server/logger.server.ts` | Pino 服务端日志实例，直接写入标准输出 |
+| `app/server/*.test.ts` | 文件系统核心与 action 的服务端测试 |
 | `app/types/files.ts` | 前后端共享的文件节点类型 |
 | `app/utils/file-format.ts` | 文件大小格式化 |
 

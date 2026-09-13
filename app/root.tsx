@@ -1,4 +1,3 @@
-import { theme } from "~/theme";
 import { CssBaseline, ThemeProvider } from "@mui/material";
 import {
 	isRouteErrorResponse,
@@ -8,6 +7,8 @@ import {
 	Scripts,
 	ScrollRestoration,
 } from "react-router";
+import GlobalErrorDialog from "~/components/feedback/GlobalErrorDialog";
+import { theme } from "~/theme";
 
 import type { Route } from "./+types/root";
 
@@ -50,30 +51,31 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-	let message = "Oops!";
-	let details = "An unexpected error occurred.";
-	let stack: string | undefined;
+	let title = "发生错误";
+	let message = "处理请求时发生异常，请稍后重试。";
+	let actionHref: string | undefined;
 
 	if (isRouteErrorResponse(error)) {
-		message = error.status === 404 ? "404" : "Error";
-		details =
-			error.status === 404
-				? "The requested page could not be found."
-				: error.statusText || details;
-	} else if (import.meta.env.DEV && error && error instanceof Error) {
-		details = error.message;
-		stack = error.stack;
+		if (error.status === 404) {
+			title = "页面不存在";
+			message = "找不到你访问的页面，请返回首页继续操作。";
+			actionHref = "/";
+		} else if (error.status === 403) {
+			title = "无权访问";
+			message = "你没有权限执行此操作。";
+		} else if (error.status < 500) {
+			title = `请求失败（${error.status}）`;
+			message = error.statusText || "当前请求无法处理，请检查后重试。";
+		}
+	} else if (import.meta.env.DEV && error instanceof Error) {
+		message = error.message;
 	}
 
 	return (
-		<main className="pt-16 p-4 container mx-auto">
-			<h1>{message}</h1>
-			<p>{details}</p>
-			{stack && (
-				<pre className="w-full p-4 overflow-x-auto">
-					<code>{stack}</code>
-				</pre>
-			)}
-		</main>
+		<GlobalErrorDialog
+			title={title}
+			message={message}
+			actionHref={actionHref}
+		/>
 	);
 }
