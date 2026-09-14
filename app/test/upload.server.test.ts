@@ -15,8 +15,8 @@ vi.mock("node:fs/promises", async (original) => {
 });
 process.env.DATA_DIR = process.cwd();
 process.env.LOGGER_LEVEL = "silent";
-const { CONFIG } = await import("./config.server");
-const { handleFileAction } = await import("./file-actions.server");
+const { CONFIG } = await import("../server/config.server");
+const { handleFileAction } = await import("../server/file-actions.server");
 let root: string;
 beforeEach(async () => {
 	root = await mkdtemp(path.join(os.tmpdir(), "sharebox-upload-faults-"));

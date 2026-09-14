@@ -17,18 +17,24 @@ afterEach(async () => {
 });
 it("reads the configured upload limit", async () => {
 	vi.stubEnv("MAX_UPLOAD_BYTES", "42");
-	expect((await import("./config.server")).CONFIG.maxUploadBytes).toBe(42);
+	expect((await import("../server/config.server")).CONFIG.maxUploadBytes).toBe(
+		42,
+	);
 });
 it.each(["0", "-1", "1.5", "abc", "9007199254740991"])(
 	"rejects invalid upload limit %s",
 	async (value) => {
 		vi.stubEnv("MAX_UPLOAD_BYTES", value);
-		await expect(import("./config.server")).rejects.toThrow("MAX_UPLOAD_BYTES");
+		await expect(import("../server/config.server")).rejects.toThrow(
+			"MAX_UPLOAD_BYTES",
+		);
 	},
 );
 it("rejects a symbolic data root", async () => {
 	await mkdir(path.join(root, "real"));
 	await symlink(path.join(root, "real"), path.join(root, "link"));
 	vi.stubEnv("DATA_DIR", path.join(root, "link"));
-	await expect(import("./config.server")).rejects.toThrow("not a directory");
+	await expect(import("../server/config.server")).rejects.toThrow(
+		"not a directory",
+	);
 });

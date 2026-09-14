@@ -12,7 +12,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { getFileTree, removeFileEntry } from "./core.server";
+import { getFileTree, removeFileEntry } from "../server/core.server";
 
 describe("file system core", () => {
 	let rootDir: string;

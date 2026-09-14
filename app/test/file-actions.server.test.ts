@@ -24,8 +24,8 @@ import {
 process.env.DATA_DIR = process.cwd();
 process.env.LOGGER_LEVEL = "silent";
 
-const { CONFIG } = await import("./config.server");
-const { handleFileAction } = await import("./file-actions.server");
+const { CONFIG } = await import("../server/config.server");
+const { handleFileAction } = await import("../server/file-actions.server");
 const originalDataDir = CONFIG.datadir;
 
 async function actionRequest(formData: FormData): Promise<Request> {
