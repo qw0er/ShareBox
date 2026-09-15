@@ -51,7 +51,7 @@ export async function handleFileAction(
 			return { error: "Invalid action" };
 		}
 
-		return actionHandlers[intent]({ form, requestLogger });
+		return await actionHandlers[intent]({ form, requestLogger });
 	} finally {
 		await form.cleanup();
 	}

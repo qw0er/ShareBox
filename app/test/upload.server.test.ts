@@ -1,5 +1,12 @@
 import { createWriteStream } from "node:fs";
-import { link, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import {
+	copyFile,
+	mkdir,
+	mkdtemp,
+	readFile,
+	readdir,
+	rm,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
@@ -11,7 +18,7 @@ vi.mock("node:fs", async (original) => {
 });
 vi.mock("node:fs/promises", async (original) => {
 	const module = await original<typeof import("node:fs/promises")>();
-	return { ...module, link: vi.fn(module.link) };
+	return { ...module, copyFile: vi.fn(module.copyFile) };
 });
 process.env.DATA_DIR = process.cwd();
 process.env.LOGGER_LEVEL = "silent";
@@ -61,9 +68,9 @@ it("cleans temporary files when disk writes fail", async () => {
 	expect(await handleFileAction(await request())).toHaveProperty("error");
 	await noResidue();
 });
-it("cleans temporary files on publication failure without a non-atomic fallback", async () => {
-	vi.mocked(link).mockRejectedValueOnce(
-		Object.assign(new Error("cross-device link"), { code: "EXDEV" }),
+it("cleans temporary files when publication fails", async () => {
+	vi.mocked(copyFile).mockRejectedValueOnce(
+		Object.assign(new Error("disk full"), { code: "ENOSPC" }),
 	);
 	expect(await handleFileAction(await request())).toHaveProperty("error");
 	await noResidue();
@@ -93,4 +100,23 @@ it("keeps the file private until the complete request arrives and cleans up on a
 	abort.abort();
 	expect(await pending).toHaveProperty("error");
 	await noResidue();
+});
+
+it("retains the temporary source until a delayed copy completes", async () => {
+	const original =
+		await vi.importActual<typeof import("node:fs/promises")>(
+			"node:fs/promises",
+		);
+	vi.mocked(copyFile).mockImplementationOnce(
+		async (source, destination, mode) => {
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			expect(await readFile(source, "utf8")).toBe("hello");
+			await original.copyFile(source, destination, mode);
+		},
+	);
+	expect(await handleFileAction(await request())).toEqual({ success: true });
+	expect(await readFile(path.join(CONFIG.datadir, "file.txt"), "utf8")).toBe(
+		"hello",
+	);
+	expect(await readdir(CONFIG.tempdir)).toEqual([]);
 });

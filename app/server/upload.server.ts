@@ -1,13 +1,12 @@
-import { createWriteStream } from "node:fs";
+import { constants, createWriteStream } from "node:fs";
 import {
 	chmod,
-	link,
+	copyFile,
 	lstat,
 	mkdir,
 	mkdtemp,
 	realpath,
 	rm,
-	stat,
 } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
@@ -35,10 +34,6 @@ async function prepareTempDirectory() {
 	const resolvedTemp = await realpath(temp);
 	if (overlaps(resolvedTemp, root) || overlaps(root, resolvedTemp))
 		throw new Error("Temporary directory must be separate from data directory");
-	if ((await stat(root)).dev !== (await stat(resolvedTemp)).dev)
-		throw new Error(
-			"Temporary and data directories must use the same filesystem",
-		);
 	return mkdtemp(path.join(resolvedTemp, "upload-"));
 }
 
@@ -151,9 +146,13 @@ export async function parseFileForm(request: Request) {
 					throw new Error("Invalid data directory");
 				await chmod(temporaryFile, 0o644);
 				request.signal.throwIfAborted();
-				// link() is atomic and fails with EEXIST for files, directories and symlinks.
-				// Unlike rename(), concurrent uploads can never replace the winner.
-				await link(temporaryFile, path.join(CONFIG.datadir, filename));
+				// Copy across mounts without replacing existing entries.
+				// The destination is visible while copying; cleanup runs after publication settles.
+				await copyFile(
+					temporaryFile,
+					path.join(CONFIG.datadir, filename),
+					constants.COPYFILE_EXCL,
+				);
 			},
 			cleanup: () => cleanup(directory),
 		};
