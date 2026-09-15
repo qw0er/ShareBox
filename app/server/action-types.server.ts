@@ -10,6 +10,7 @@ export type FileActionContext = {
 };
 
 export type FileActionResult = {
+	results?: { filename: string; error?: string }[];
 	success?: true;
 	error?: string;
 };

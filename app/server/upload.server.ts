@@ -13,6 +13,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import busboy from "busboy";
+import { MAX_UPLOAD_FILES } from "../types/files";
 import { CONFIG } from "./config.server";
 import { logger } from "./logger.server";
 
@@ -45,29 +46,29 @@ export async function parseFileForm(request: Request) {
 		preservePath: true,
 		defParamCharset: "utf8",
 		limits: {
-			files: 1,
+			files: MAX_UPLOAD_FILES,
 			fields: 2,
-			parts: 4,
+			parts: MAX_UPLOAD_FILES + 3,
 			fieldSize: 4096,
 			fieldNameSize: 100,
 			fileSize: CONFIG.maxUploadBytes + 1,
 		},
 	});
 	const fields = new Map<string, string>();
-	let directory: string | undefined;
-	let filename: string | undefined;
-	let size = 0;
+	const files: { filename: string; size: number; directory?: string }[] = [];
+	const streams: Readable[] = [];
 	let failure: Error | undefined;
-	let writing: Promise<void> = Promise.resolve();
+	const writing: Promise<void>[] = [];
 	const source = Readable.fromWeb(
 		request.body as NodeReadableStream<Uint8Array>,
 	);
 	const fail = (error: Error) => {
 		failure ??= error;
 		parser.destroy(error);
+		for (const stream of streams) stream.destroy(error);
 	};
 	parser.on("filesLimit", () =>
-		fail(new Error("Please upload exactly one file")),
+		fail(new Error(`Please upload at most ${MAX_UPLOAD_FILES} files`)),
 	);
 	parser.on("fieldsLimit", () => fail(new Error("Invalid form data")));
 	parser.on("partsLimit", () => fail(new Error("Invalid form data")));
@@ -84,35 +85,48 @@ export async function parseFileForm(request: Request) {
 	parser.on("file", (name, stream, info) => {
 		// Attach error handling before any asynchronous setup.
 		stream.on("error", () => {});
-		writing = (async () => {
-			if (name !== "file") throw new Error("Invalid form data");
-			validateFileName(info.filename);
-			filename = info.filename;
-			directory = await prepareTempDirectory();
-			await pipeline(
-				stream,
-				new Transform({
-					transform(chunk: Buffer, _encoding, callback) {
-						size += chunk.length;
-						callback(
-							size > CONFIG.maxUploadBytes
-								? new Error("File exceeds upload size limit")
-								: null,
-							chunk,
-						);
-					},
-				}),
-				createWriteStream(path.join(directory, "content"), {
-					flags: "wx",
-					mode: 0o600,
-				}),
-				{ signal: request.signal },
-			);
-			if (stream.truncated) throw new Error("File exceeds upload size limit");
-		})().catch((error: Error) => {
-			stream.destroy();
-			fail(error);
-		});
+		streams.push(stream);
+		const file = {
+			filename: info.filename,
+			size: 0,
+			directory: undefined as string | undefined,
+		};
+		files.push(file);
+		writing.push(
+			(async () => {
+				if (name !== "file") throw new Error("Invalid form data");
+				validateFileName(info.filename);
+				if (failure) throw failure;
+				file.directory = await prepareTempDirectory();
+				if (failure) throw failure;
+				await pipeline(
+					stream,
+					new Transform({
+						transform(chunk: Buffer, _encoding, callback) {
+							file.size += chunk.length;
+							callback(
+								file.size > CONFIG.maxUploadBytes
+									? new Error(
+											`File exceeds upload size limit: ${file.filename}`,
+										)
+									: null,
+								chunk,
+							);
+						},
+					}),
+					createWriteStream(path.join(file.directory, "content"), {
+						flags: "wx",
+						mode: 0o600,
+					}),
+					{ signal: request.signal },
+				);
+				if (stream.truncated)
+					throw new Error(`File exceeds upload size limit: ${file.filename}`);
+			})().catch((error: Error) => {
+				stream.destroy();
+				fail(error);
+			}),
+		);
 	});
 	let total = 0;
 	try {
@@ -122,7 +136,11 @@ export async function parseFileForm(request: Request) {
 				transform(chunk: Buffer, _encoding, callback) {
 					total += chunk.length;
 					callback(
-						total > CONFIG.maxUploadBytes + 65536
+						total >
+							Math.min(
+								Number.MAX_SAFE_INTEGER,
+								(CONFIG.maxUploadBytes + 65536) * MAX_UPLOAD_FILES,
+							)
 							? new Error("Request exceeds upload size limit")
 							: null,
 						chunk,
@@ -132,15 +150,15 @@ export async function parseFileForm(request: Request) {
 			parser,
 			{ signal: request.signal },
 		);
-		await writing;
+		await Promise.all(writing);
 		if (failure) throw failure;
 		return {
 			fields,
-			filename,
-			size,
-			async publish() {
-				if (!directory || !filename) throw new Error("No file uploaded");
-				const temporaryFile = path.join(directory, "content");
+			files,
+			async publish(file: (typeof files)[number]) {
+				if (!file.directory || !file.filename)
+					throw new Error("No file uploaded");
+				const temporaryFile = path.join(file.directory, "content");
 				const root = await lstat(CONFIG.datadir);
 				if (!root.isDirectory() || root.isSymbolicLink())
 					throw new Error("Invalid data directory");
@@ -150,17 +168,17 @@ export async function parseFileForm(request: Request) {
 				// The destination is visible while copying; cleanup runs after publication settles.
 				await copyFile(
 					temporaryFile,
-					path.join(CONFIG.datadir, filename),
+					path.join(CONFIG.datadir, file.filename),
 					constants.COPYFILE_EXCL,
 				);
 			},
-			cleanup: () => cleanup(directory),
+			cleanup: () => Promise.all(files.map((file) => cleanup(file.directory))),
 		};
 	} catch (error) {
 		source.destroy();
-		parser.destroy();
-		await writing;
-		await cleanup(directory);
+		fail(error instanceof Error ? error : new Error("Invalid form data"));
+		await Promise.all(writing);
+		await Promise.all(files.map((file) => cleanup(file.directory)));
 		throw failure ?? error;
 	}
 }

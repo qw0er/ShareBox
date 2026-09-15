@@ -13,9 +13,9 @@
 | `app/components/files/FileItemLabel.tsx` | 文件图标、名称、大小及操作入口 |
 | `app/components/files/DeleteFileButton.tsx` | 删除确认、提交状态和错误反馈 |
 | `app/components/upload/UploadPanel.tsx` | 待上传文件、上传请求和结果反馈 |
-| `app/components/upload/UploadDropzone.tsx` | 本地选择、拖放和单文件选择校验 |
+| `app/components/upload/UploadDropzone.tsx` | 本地多文件选择和拖放 |
 | `app/server/file-actions.server.ts` | 文件 action 的请求方法、来源、表单解析和 intent 分发 |
-| `app/server/upload-action.server.ts` | 上传 action 的字段校验、复制发布、日志和错误映射 |
+| `app/server/upload-action.server.ts` | 上传 action 的字段校验、逐文件复制发布、日志和结果汇总 |
 | `app/server/remove-action.server.ts` | 删除 action 的字段校验、文件操作、日志和错误映射 |
 | `app/server/action-types.server.ts` | 各文件 action 共用的上下文和返回类型 |
 | `app/server/upload.server.ts` | 流式表单解析、大小限制、私有临时文件、同名拒绝与复制发布 |

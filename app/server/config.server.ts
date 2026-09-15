@@ -36,7 +36,7 @@ function getDATA_DIR(): string {
 }
 
 function getUploadLimit(): number {
-	const value = process.env.MAX_UPLOAD_BYTES || "1073741824";
+	const value = process.env.MAX_UPLOAD_BYTES || "10737418240";
 	const limit = Number(value);
 	if (
 		!/^\d+$/.test(value) ||

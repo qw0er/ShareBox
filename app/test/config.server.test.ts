@@ -38,3 +38,10 @@ it("rejects a symbolic data root", async () => {
 		"not a directory",
 	);
 });
+
+it("defaults to 10 GiB per file", async () => {
+	vi.stubEnv("MAX_UPLOAD_BYTES", "");
+	expect((await import("../server/config.server")).CONFIG.maxUploadBytes).toBe(
+		10 * 1024 ** 3,
+	);
+});

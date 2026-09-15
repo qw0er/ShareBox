@@ -9,7 +9,7 @@ export async function handleRemoveAction({
 	form,
 	requestLogger,
 }: FileActionContext): Promise<FileActionResult> {
-	if (form.filename) return { error: "Invalid form data" };
+	if (form.files.length) return { error: "Invalid form data" };
 
 	const relativePath = form.fields.get("path");
 	if (typeof relativePath !== "string") {

@@ -1,5 +1,5 @@
 import CloudUploadOutlined from "@mui/icons-material/CloudUploadOutlined";
-import { Alert, Box, Button, Stack, Typography } from "@mui/material";
+import { Box, Button, Stack, Typography } from "@mui/material";
 import { useRef, useState } from "react";
 
 export default function UploadDropzone({
@@ -7,11 +7,10 @@ export default function UploadDropzone({
 	onSelect,
 }: {
 	busy: boolean;
-	onSelect: (file: File | null) => void;
+	onSelect: (files: File[]) => void;
 }) {
 	const input = useRef<HTMLInputElement>(null);
 	const [dragging, setDragging] = useState(false);
-	const [selectionError, setSelectionError] = useState("");
 	return (
 		<Stack spacing={2}>
 			<Box
@@ -24,12 +23,7 @@ export default function UploadDropzone({
 					event.preventDefault();
 					setDragging(false);
 					if (busy) return;
-					if (event.dataTransfer.files.length !== 1) {
-						setSelectionError("请每次选择一个文件。");
-						return;
-					}
-					setSelectionError("");
-					onSelect(event.dataTransfer.files[0]);
+					onSelect(Array.from(event.dataTransfer.files));
 				}}
 				sx={{
 					border: "1.5px dashed",
@@ -51,7 +45,7 @@ export default function UploadDropzone({
 					color="text.secondary"
 					sx={{ my: 1, display: "block" }}
 				>
-					或从设备中选择一个文件
+					或从设备中选择多个文件
 				</Typography>
 				<Button
 					variant="outlined"
@@ -63,17 +57,16 @@ export default function UploadDropzone({
 				<input
 					ref={input}
 					type="file"
+					multiple
 					hidden
 					aria-label="选择上传文件"
 					disabled={busy}
 					onChange={(event) => {
-						setSelectionError("");
-						onSelect(event.target.files?.[0] ?? null);
+						onSelect(Array.from(event.target.files ?? []));
 						event.target.value = "";
 					}}
 				/>
 			</Box>
-			{selectionError && <Alert severity="warning">{selectionError}</Alert>}
 		</Stack>
 	);
 }

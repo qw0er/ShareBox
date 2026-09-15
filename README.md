@@ -9,7 +9,7 @@ ShareBox 是一个面向个人服务器的轻量文件管理与分享工具。�
 - 在同一工作区浏览文件树和上传文件
 - 展开、收起多级目录，支持鼠标与键盘操作
 - 显示文件类型图标、文件大小和目录子项数量
-- 选择或拖放单个文件并显示上传状态
+- 选择或拖放多个文件，显示上传状态和逐文件结果
 - 删除文件和空目录，操作前显示确认对话框
 - 上传、删除或手动刷新后重新读取磁盘文件树
 - 忽略符号链接，并限制删除目标位于配置的数据目录内
@@ -118,7 +118,7 @@ Environment=HOST=127.0.0.1
 Environment=PORT=8123
 Environment=DATA_DIR=/var/lib/sharebox/data
 Environment=UPLOAD_TMP_DIR=/var/lib/sharebox/tmp
-Environment=MAX_UPLOAD_BYTES=1073741824
+Environment=MAX_UPLOAD_BYTES=10737418240
 ExecStart=/usr/bin/node /var/lib/sharebox/app/node_modules/@react-router/serve/dist/cli.js /var/lib/sharebox/app/build/server/index.js
 UMask=0022
 ```
@@ -131,7 +131,7 @@ UMask=0022
 | --- | --- | --- |
 | `DATA_DIR` | 是 | ShareBox 浏览和修改的文件根目录；目录必须在启动前创建 |
 | `UPLOAD_TMP_DIR` | 否 | 私有上传临时目录，默认 `<DATA_DIR 的真实路径>.tmp`，不得与公开目录重叠，支持跨文件系统 |
-| `MAX_UPLOAD_BYTES` | 否 | 单文件大小上限，默认 `1073741824`（1 GiB），必须为正安全整数 |
+| `MAX_UPLOAD_BYTES` | 否 | 单文件大小上限，默认 `10737418240`（10 GiB），必须为正安全整数 |
 | `LOGGER_LEVEL` | 否 | Pino 日志级别，默认 `info` |
 
 应用以 JSON Lines 格式将启动、文件列表读取、上传、删除和相关错误日志直接写入标准输出，不创建日志文件。生产环境可由 systemd、容器运行时或其他进程管理器负责采集和保留日志。
@@ -183,7 +183,7 @@ Caddy 认证、HTTPS、公开浏览下载和管理应用停止后的下载能力
 
 ## 已知限制
 
-- 仅支持向根目录上传单个文件
+- 支持向根目录批量上传，每批最多 100 个文件，默认单文件上限 10 GiB
 - 同名上传拒绝覆盖
 - 不提供百分比上传进度、分块上传或断点续传；进程被强制终止时可能留下私有临时文件，停止应用后可检查和清理临时目录
 - 只能删除文件或空目录

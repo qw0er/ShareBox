@@ -8,7 +8,7 @@ service_group="${SHAREBOX_GROUP:-$service_user}"
 state_dir="${SHAREBOX_STATE_DIR:-/var/lib/sharebox}"
 app_dir="${SHAREBOX_APP_DIR:-$state_dir/app}"
 data_dir="${SHAREBOX_DATA_DIR:-$state_dir/data}"
-upload_limit="${SHAREBOX_MAX_UPLOAD_BYTES:-1073741824}"
+upload_limit="${SHAREBOX_MAX_UPLOAD_BYTES:-10737418240}"
 listen_host="${SHAREBOX_HOST:-127.0.0.1}"
 listen_port="${SHAREBOX_PORT:-8123}"
 unit_file="/etc/systemd/system/${service_name}.service"
@@ -40,7 +40,7 @@ Optional environment variables:
   SHAREBOX_STATE_DIR        State root (default: /var/lib/sharebox)
   SHAREBOX_APP_DIR          Application directory (default: <state>/app)
   SHAREBOX_DATA_DIR         Persistent data directory (default: <state>/data)
-  SHAREBOX_MAX_UPLOAD_BYTES Upload byte limit (default: 1073741824)
+  SHAREBOX_MAX_UPLOAD_BYTES Upload byte limit (default: 10737418240)
   SHAREBOX_HOST             Listen address (default: 127.0.0.1)
   SHAREBOX_PORT             Listen port (default: 8123)
   SHAREBOX_SERVICE_NAME     systemd service name (default: sharebox)

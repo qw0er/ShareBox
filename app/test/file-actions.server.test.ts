@@ -286,17 +286,86 @@ describe("upload safety", () => {
 			"",
 		);
 	});
-	it("rejects multiple file parts before publication", async () => {
+	it("uploads multiple files with independent size limits", async () => {
 		const form = new FormData();
 		form.set("intent", "upload");
-		form.append("file", new File(["one"], "one"));
-		form.append("file", new File(["two"], "two"));
-		expect(await handleFileAction(await actionRequest(form))).toHaveProperty(
-			"error",
+		form.append("file", new File(["12345678"], "one"));
+		form.append("file", new File(["abcdefgh"], "two"));
+		expect(await handleFileAction(await actionRequest(form))).toEqual({
+			success: true,
+			results: [{ filename: "one" }, { filename: "two" }],
+		});
+		expect(await readFile(path.join(CONFIG.datadir, "one"), "utf8")).toBe(
+			"12345678",
 		);
-		expect(await readdir(CONFIG.datadir)).toEqual([]);
+		expect(await readFile(path.join(CONFIG.datadir, "two"), "utf8")).toBe(
+			"abcdefgh",
+		);
 		await cleanTemp();
 	});
+	it("reports conflicts and continues publishing other files", async () => {
+		await writeFile(path.join(CONFIG.datadir, "same"), "original");
+		const form = new FormData();
+		form.set("intent", "upload");
+		for (const name of ["same", "good", "good", "last"])
+			form.append("file", new File(["data"], name));
+		const result = await handleFileAction(await actionRequest(form));
+		expect(result.results?.map((entry) => !!entry.error)).toEqual([
+			true,
+			false,
+			true,
+			false,
+		]);
+		expect(await readFile(path.join(CONFIG.datadir, "same"), "utf8")).toBe(
+			"original",
+		);
+		expect(await readFile(path.join(CONFIG.datadir, "last"), "utf8")).toBe(
+			"data",
+		);
+		await cleanTemp();
+	});
+	it.each(["oversize", "invalid", "too-many"])(
+		"cleans the whole batch before publication on %s",
+		async (reason) => {
+			const form = new FormData();
+			form.set("intent", "upload");
+			form.append("file", new File(["ok"], "first"));
+			if (reason === "too-many") {
+				for (let i = 0; i < 100; i++)
+					form.append("file", new File([""], String(i)));
+			} else {
+				form.append(
+					"file",
+					new File(
+						[reason === "oversize" ? "123456789" : "ok"],
+						reason === "invalid" ? "../bad" : "large",
+					),
+				);
+			}
+			expect(await handleFileAction(await actionRequest(form))).toHaveProperty(
+				"error",
+			);
+			expect(await readdir(CONFIG.datadir)).toEqual([]);
+			await cleanTemp();
+		},
+	);
+	it("accepts 100 files and rejects file parts in removal requests", async () => {
+		const form = new FormData();
+		form.set("intent", "upload");
+		for (let i = 0; i < 100; i++)
+			form.append("file", new File([""], String(i)));
+		expect(
+			(await handleFileAction(await actionRequest(form))).results,
+		).toHaveLength(100);
+		form.set("intent", "remove");
+		form.set("path", "0");
+		expect(await handleFileAction(await actionRequest(form))).toEqual({
+			error: "Invalid form data",
+		});
+		expect(await readdir(CONFIG.datadir)).toHaveLength(100);
+		await cleanTemp();
+	});
+
 	it.each(["PUT", "PATCH", "DELETE"])(
 		"rejects %s before reading the body",
 		async (method) => {

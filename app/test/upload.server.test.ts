@@ -37,10 +37,10 @@ afterEach(async () => {
 	vi.clearAllMocks();
 	await rm(root, { recursive: true, force: true });
 });
-async function request() {
+async function request(names = ["file.txt"]) {
 	const form = new FormData();
 	form.set("intent", "upload");
-	form.set("file", new File(["hello"], "file.txt"));
+	for (const name of names) form.append("file", new File(["hello"], name));
 	const encoded = new Request("http://localhost/", {
 		method: "POST",
 		headers: { origin: "http://localhost" },
@@ -76,7 +76,7 @@ it("cleans temporary files when publication fails", async () => {
 	await noResidue();
 });
 it("keeps the file private until the complete request arrives and cleans up on abort", async () => {
-	const encoded = await request();
+	const encoded = await request(["first.txt", "second.txt"]);
 	const bytes = new Uint8Array(await encoded.arrayBuffer());
 	const abort = new AbortController();
 	const body = new ReadableStream<Uint8Array>({
@@ -94,7 +94,7 @@ it("keeps the file private until the complete request arrives and cleans up on a
 		} as RequestInit),
 	);
 	await vi.waitFor(async () =>
-		expect(await readdir(CONFIG.tempdir)).toHaveLength(1),
+		expect(await readdir(CONFIG.tempdir)).toHaveLength(2),
 	);
 	expect(await readdir(CONFIG.datadir)).toEqual([]);
 	abort.abort();
@@ -116,6 +116,21 @@ it("retains the temporary source until a delayed copy completes", async () => {
 	);
 	expect(await handleFileAction(await request())).toEqual({ success: true });
 	expect(await readFile(path.join(CONFIG.datadir, "file.txt"), "utf8")).toBe(
+		"hello",
+	);
+	expect(await readdir(CONFIG.tempdir)).toEqual([]);
+});
+
+it("continues a batch after a copy failure and cleans all temporary files", async () => {
+	vi.mocked(copyFile).mockRejectedValueOnce(
+		Object.assign(new Error("disk full"), { code: "ENOSPC" }),
+	);
+	const result = await handleFileAction(
+		await request(["failed.txt", "good.txt"]),
+	);
+	expect(result.results?.map((entry) => !!entry.error)).toEqual([true, false]);
+	expect(await readdir(CONFIG.datadir)).toEqual(["good.txt"]);
+	expect(await readFile(path.join(CONFIG.datadir, "good.txt"), "utf8")).toBe(
 		"hello",
 	);
 	expect(await readdir(CONFIG.tempdir)).toEqual([]);
