@@ -2,12 +2,9 @@ import type { FileActionResult } from "./action-types.server";
 import { CONFIG } from "./config.server";
 import { logger } from "./logger.server";
 import { handleRemoveAction } from "./remove-action.server";
-import { parseFileForm } from "./upload.server";
-import { handleUploadAction } from "./upload-action.server";
 
 const actionHandlers = {
 	remove: handleRemoveAction,
-	upload: handleUploadAction,
 } as const;
 
 type FileActionIntent = keyof typeof actionHandlers;
@@ -31,30 +28,25 @@ export async function handleFileAction(
 		requestLogger.warn("Rejected action origin");
 		return { error: "Invalid request origin" };
 	}
-	let form: Awaited<ReturnType<typeof parseFileForm>>;
+	let form: FormData;
 	try {
-		form = await parseFileForm(request);
+		form = await request.formData();
 	} catch (error) {
 		requestLogger.warn({ err: error }, "Unable to parse file form");
 		return {
 			error: error instanceof Error ? error.message : "Invalid form data",
 		};
 	}
-	const formData = form.fields;
-	const intent = formData.get("intent");
-	try {
-		if (!isFileActionIntent(intent)) {
-			requestLogger.warn(
-				{ intent: typeof intent === "string" ? intent : null },
-				"Invalid file action",
-			);
-			return { error: "Invalid action" };
-		}
-
-		return await actionHandlers[intent]({ form, requestLogger });
-	} finally {
-		await form.cleanup();
+	const intent = form.get("intent");
+	if (!isFileActionIntent(intent)) {
+		requestLogger.warn(
+			{ intent: typeof intent === "string" ? intent : null },
+			"Invalid file action",
+		);
+		return { error: "Invalid action" };
 	}
+
+	return actionHandlers[intent]({ form, requestLogger });
 }
 
 function isFileActionIntent(intent: unknown): intent is FileActionIntent {

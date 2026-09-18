@@ -4,21 +4,26 @@ import {
 	copyFile,
 	lstat,
 	mkdir,
+	readdir,
 	readFile,
 	realpath,
 	rm,
 	writeFile,
-	readdir,
 } from "node:fs/promises";
 import path from "node:path";
 import { FileStore } from "@tus/file-store";
 import { MemoryLocker, Server } from "@tus/server";
 import { CONFIG } from "./config.server";
 import { logger } from "./logger.server";
-import { validateFileName } from "./upload.server";
 
 const TTL = 7 * 24 * 60 * 60 * 1000;
 const idPattern = /^[a-f0-9]{32}$/;
+
+function validateFileName(name: string) {
+	if (!name || name === "." || name === ".." || /[\\/\0]/.test(name)) {
+		throw new Error("Invalid file name");
+	}
+}
 
 /** One process owns the upload directory. Locks are shared with tus PATCH/DELETE. */
 export async function createUploadService(config = CONFIG) {
@@ -221,23 +226,31 @@ export async function createUploadService(config = CONFIG) {
 	return { handle, cleanup };
 }
 
+async function initializeUploadService() {
+	const instance = await createUploadService();
+
+	const clean = async () => {
+		try {
+			await instance.cleanup();
+		} catch (err) {
+			logger.error({ err }, "Upload cleanup failed");
+		}
+	};
+
+	void clean();
+	setInterval(clean, 60 * 60 * 1000).unref();
+
+	return instance;
+}
 let service: ReturnType<typeof createUploadService> | undefined;
 export async function handleTusRequest(request: Request) {
 	if (!service) {
-		service = createUploadService()
-			.then((instance) => {
-				const clean = () =>
-					instance
-						.cleanup()
-						.catch((err) => logger.error({ err }, "Upload cleanup failed"));
-				void clean();
-				setInterval(clean, 60 * 60 * 1000).unref();
-				return instance;
-			})
-			.catch((error) => {
-				service = undefined;
-				throw error;
-			});
+		try {
+			service = initializeUploadService();
+		} catch (error) {
+			service = undefined;
+			throw error;
+		}
 	}
 	return (await service).handle(request);
 }

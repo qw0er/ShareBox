@@ -2,9 +2,9 @@ import FileBrowser from "~/components/files/FileBrowser";
 import WorkspaceLayout from "~/components/layout/WorkspaceLayout";
 import UploadPanel from "~/components/upload/UploadPanel";
 import { CONFIG } from "~/server/config.server";
-import { getFileTree } from "~/server/core.server";
 import { handleFileAction } from "~/server/file-actions.server";
 import { logger } from "~/server/logger.server";
+import { getFileTree } from "~/server/read-files.server";
 import type { Route } from "./+types/home";
 
 export function meta() {

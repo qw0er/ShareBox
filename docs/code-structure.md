@@ -17,11 +17,9 @@
 | `app/routes/uploads.ts` | 同源 tus 资源路由 |
 | `app/server/tus.server.ts` | tus FileStore、来源/大小校验、共享锁、复制发布、回执及过期清理 |
 | `app/components/upload/UploadDropzone.tsx` | 本地多文件选择和拖放 |
-| `app/server/file-actions.server.ts` | 文件 action 的请求方法、来源、表单解析和 intent 分发 |
-| `app/server/upload-action.server.ts` | 上传 action 的字段校验、逐文件复制发布、日志和结果汇总 |
+| `app/server/file-actions.server.ts` | 删除 action 的请求方法、来源、表单解析和 intent 分发 |
 | `app/server/remove-action.server.ts` | 删除 action 的字段校验、文件操作、日志和错误映射 |
 | `app/server/action-types.server.ts` | 各文件 action 共用的上下文和返回类型 |
-| `app/server/upload.server.ts` | 流式表单解析、大小限制、私有临时文件、同名拒绝与复制发布 |
 | `app/server/core.server.ts` | 文件树读取和受目录边界约束的删除操作 |
 | `app/server/config.server.ts` | 存储目录、临时目录、上传限额与来源配置及启动检查 |
 | `app/server/logger.server.ts` | Pino 服务端日志实例，直接写入标准输出 |

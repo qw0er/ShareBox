@@ -78,18 +78,14 @@ export class UploadQueue {
 	}
 	private emit() {
 		this.tasks = [...this.tasks];
-		try {
-			localStorage.setItem(
-				STORAGE,
-				JSON.stringify(
-					this.tasks
-						.filter((t) => t.status !== "complete")
-						.map(({ file, ...task }) => task),
-				),
-			);
-		} catch {
-			/* Upload still works without local storage. */
-		}
+		localStorage.setItem(
+			STORAGE,
+			JSON.stringify(
+				this.tasks
+					.filter((t) => t.status !== "complete")
+					.map(({ file, ...task }) => task),
+			),
+		);
 		for (const listener of this.listeners) listener();
 		queueMicrotask(() => this.pump());
 	}

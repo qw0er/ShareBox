@@ -31,10 +31,10 @@ flowchart LR
 
 - `loader` 递归读取公开根目录中的文件和目录，返回文件名、相对路径、文件大小和子节点。
 - 页面使用 MUI 目录树、文件选择和拖放区域、上传按钮及删除确认对话框。
-- `action` 根据表单中的 `intent` 执行 `upload` 或 `remove`。
+- `action` 根据表单中的 `intent` 执行 `remove`。
 - 操作成功后由 React Router 重新验证 loader，刷新文件列表。
 
-上传组件使用 `tus-js-client`，每个 PATCH 最多 8 MiB，同时传输最多 2 个文件。资源路由 `/uploads/*` 转交 `@tus/server.handleWeb`，POST 创建任务，HEAD 查询已落盘偏移，PATCH 续传，DELETE 终止。全部在管理端同源认证边界内，不提供跨源客户端支持。`POST /uploads/:id/complete` 独立完成发布；发布成功后前端调用 revalidator。浏览器保存任务元数据，不保存文件内容，刷新后重新选择原文件即可恢复。旧 `intent=upload` multipart action 暂留兼容，新界面不使用。
+上传组件使用 `tus-js-client`，每个 PATCH 最多 8 MiB，同时传输最多 2 个文件。资源路由 `/uploads/*` 转交 `@tus/server.handleWeb`，POST 创建任务，HEAD 查询已落盘偏移，PATCH 续传，DELETE 终止。全部在管理端同源认证边界内，不提供跨源客户端支持。`POST /uploads/:id/complete` 独立完成发布；发布成功后前端调用 revalidator。浏览器保存任务元数据，不保存文件内容，刷新后重新选择原文件即可恢复。
 
 删除使用 POST 提交 `intent=remove` 和相对路径 `path`。确认后才提交，取消保持文件不变。操作成功后由 React Router 重新验证 loader。
 

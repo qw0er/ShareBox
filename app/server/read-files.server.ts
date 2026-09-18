@@ -1,15 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-
 import type { FileNode } from "~/types/files";
-
-function isNotFoundError(error: unknown): boolean {
-	return (
-		error instanceof Error &&
-		"code" in error &&
-		(error as NodeJS.ErrnoException).code === "ENOENT"
-	);
-}
+import { checkRootDirectory, isNotFoundError } from "./utils.server";
 
 export async function getFileTree(dirPath: string): Promise<FileNode[]> {
 	const rootPath = path.resolve(dirPath);
@@ -75,60 +67,4 @@ async function readFileTree(
 			}
 			return left.name.localeCompare(right.name);
 		});
-}
-
-export async function removeFileEntry(
-	rootDir: string,
-	relativePath: string,
-): Promise<void> {
-	if (
-		!relativePath ||
-		path.isAbsolute(relativePath) ||
-		path.win32.isAbsolute(relativePath)
-	) {
-		throw new Error("Invalid file path");
-	}
-
-	const segments = relativePath.split(/[\\/]/);
-	if (
-		segments.some(
-			(segment) =>
-				!segment ||
-				segment === "." ||
-				segment === ".." ||
-				segment.includes("\0"),
-		)
-	) {
-		throw new Error("Invalid file path");
-	}
-
-	let targetPath = path.resolve(rootDir);
-	await checkRootDirectory(targetPath);
-	let targetStats: Awaited<ReturnType<typeof fs.lstat>> | undefined;
-
-	for (const segment of segments) {
-		targetPath = path.join(targetPath, segment);
-		targetStats = await fs.lstat(targetPath);
-		if (targetStats.isSymbolicLink()) {
-			throw new Error("Symbolic links are not supported");
-		}
-	}
-
-	if (targetStats?.isFile()) {
-		await fs.unlink(targetPath);
-		return;
-	}
-
-	if (targetStats?.isDirectory()) {
-		await fs.rmdir(targetPath);
-		return;
-	}
-
-	throw new Error("Unsupported file type");
-}
-
-async function checkRootDirectory(rootPath: string) {
-	const stats = await fs.lstat(rootPath);
-	if (!stats.isDirectory() || stats.isSymbolicLink())
-		throw new Error("Invalid data directory");
 }
