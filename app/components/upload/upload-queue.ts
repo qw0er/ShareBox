@@ -1,4 +1,13 @@
 import { Upload } from "tus-js-client";
+import {
+	activeCount,
+	addFiles,
+	MAX_CONCURRENT,
+	parseStoredTasks,
+	queueReadyTasks,
+	removeTask,
+	updateTask,
+} from "./upload-queue-state";
 
 export type UploadStatus =
 	| "ready"
@@ -6,7 +15,6 @@ export type UploadStatus =
 	| "uploading"
 	| "pausing"
 	| "paused"
-	| "publishing"
 	| "error"
 	| "complete"
 	| "deleting";
@@ -20,7 +28,6 @@ export type UploadTask = {
 	url?: string;
 	error?: string;
 	file?: File;
-	transferred?: boolean;
 };
 const STORAGE = "sharebox.uploads.v1";
 const CHUNK_SIZE = 8 * 1024 * 1024;
@@ -43,38 +50,10 @@ export class UploadQueue {
 	getSnapshot = () => this.tasks;
 	restore() {
 		this.disposed = false;
-		try {
-			const saved: UploadTask[] = JSON.parse(
-				localStorage.getItem(STORAGE) || "[]",
-			);
-			this.tasks = saved
-				.filter(
-					(t) =>
-						typeof t.id === "string" &&
-						typeof t.name === "string" &&
-						Number.isSafeInteger(t.size) &&
-						t.size >= 0 &&
-						(!t.url || this.validUrl(t.url)),
-				)
-				.slice(0, 100)
-				.map((t) => ({ ...t, file: undefined, status: "paused" }));
-		} catch {
-			this.tasks = [];
-		}
+		this.tasks = parseStoredTasks(localStorage.getItem(STORAGE), (url) =>
+			validUrl(url),
+		);
 		this.emit();
-	}
-	private validUrl(url: string) {
-		try {
-			const parsed = new URL(url, location.origin);
-			return (
-				parsed.origin === location.origin &&
-				/^\/uploads\/[a-f0-9]{32}$/.test(parsed.pathname) &&
-				!parsed.search &&
-				!parsed.hash
-			);
-		} catch {
-			return false;
-		}
 	}
 	private emit() {
 		this.tasks = [...this.tasks];
@@ -91,60 +70,31 @@ export class UploadQueue {
 	}
 	startAll(maxSize: number) {
 		this.maxSize = maxSize;
-		for (const task of this.tasks) {
-			if (task.status === "ready" && task.file && task.size <= maxSize) {
-				task.status = "queued";
-				this.pending.add(task.id);
-			}
-		}
+		const queued = queueReadyTasks(this.tasks, maxSize);
+		this.tasks = queued.tasks;
+		for (const id of queued.queuedIds) this.pending.add(id);
 		this.emit();
 	}
 	private pump() {
 		if (this.disposed) return;
 		for (const id of this.pending) {
-			if (
-				this.tasks.filter((t) =>
-					["uploading", "pausing", "publishing"].includes(t.status),
-				).length >= 2
-			)
-				break;
+			if (activeCount(this.tasks) >= MAX_CONCURRENT) break;
 			this.pending.delete(id);
 			void this.start(id, this.maxSize);
 		}
 	}
 	private update(task: UploadTask, changes: Partial<UploadTask>) {
-		if (this.disposed || !this.tasks.includes(task)) return;
-		Object.assign(task, changes);
+		if (this.disposed || !this.tasks.some(({ id }) => id === task.id)) return;
+		this.tasks = updateTask(this.tasks, task.id, changes);
 		this.emit();
 	}
+	private statusOf(id: string) {
+		return this.tasks.find((task) => task.id === id)?.status;
+	}
 	add(files: File[], maxSize: number) {
-		for (const file of files) {
-			const existing = this.tasks.find(
-				(t) =>
-					t.name === file.name &&
-					t.size === file.size &&
-					t.lastModified === file.lastModified &&
-					t.status !== "complete",
-			);
-			if (existing) {
-				existing.file = file;
-				continue;
-			}
-			if (this.tasks.length >= 100) {
-				this.emit();
-				throw new Error("最多保留 100 个上传任务，请先移除已完成任务。");
-			}
-			this.tasks.push({
-				id: crypto.randomUUID(),
-				name: file.name,
-				size: file.size,
-				lastModified: file.lastModified,
-				file,
-				bytes: 0,
-				status: file.size > maxSize ? "error" : "ready",
-				error: file.size > maxSize ? "超过单文件大小限制。" : undefined,
-			});
-		}
+		this.tasks = addFiles(this.tasks, files, maxSize, () =>
+			crypto.randomUUID(),
+		);
 		this.emit();
 	}
 	async start(id: string, maxSize: number) {
@@ -152,18 +102,11 @@ export class UploadQueue {
 		if (
 			!task?.file ||
 			task.size > maxSize ||
-			["uploading", "pausing", "publishing", "deleting", "complete"].includes(
-				task.status,
-			)
+			["uploading", "pausing", "deleting", "complete"].includes(task.status)
 		)
 			return;
 		// Bound disk and network pressure. Remaining tasks can be started as slots free up.
-		if (
-			this.tasks.filter((t) =>
-				["uploading", "pausing", "publishing"].includes(t.status),
-			).length >= 2
-		)
-			return;
+		if (activeCount(this.tasks) >= MAX_CONCURRENT) return;
 		this.update(task, { status: "uploading", error: undefined });
 		let upload = this.uploads.get(id);
 		if (!upload) {
@@ -175,55 +118,47 @@ export class UploadQueue {
 				// The queue persists URLs together with visible task records.
 				storeFingerprintForResuming: false,
 				metadata: { filename: task.name },
-				onAfterResponse: (_request, response) => {
+				onAfterResponse: (request, response) => {
+					// tus-js-client otherwise creates a new upload after a failed HEAD.
+					// Keep the URL and accepted bytes when completion is temporarily failing.
+					const status = response.getStatus();
+					if (
+						request.getMethod() === "HEAD" &&
+						status >= 400 &&
+						status !== 404 &&
+						status !== 410
+					) {
+						throw new Error(`无法确认上传完成（HTTP ${status}），请重试。`);
+					}
 					const locationHeader = response.getHeader("Location");
 					if (locationHeader) {
 						const url = new URL(locationHeader, location.origin).href;
-						if (!this.validUrl(url)) throw new Error("Invalid upload URL");
+						if (!validUrl(url)) throw new Error("Invalid upload URL");
 						this.update(task, { url });
 					}
 				},
 				onProgress: (bytes) => {
-					if (task.status === "uploading") this.update(task, { bytes });
+					if (this.statusOf(id) === "uploading") this.update(task, { bytes });
 				},
 				onError: (error) => {
-					if (task.status === "uploading")
+					if (this.statusOf(id) === "uploading")
 						this.update(task, { status: "error", error: error.message });
 				},
 				onSuccess: () => {
-					if (task.status === "uploading") {
-						this.update(task, { transferred: true });
-						void this.publish(task);
+					if (!this.disposed && this.statusOf(id) === "uploading") {
+						this.update(task, {
+							status: "complete",
+							bytes: task.size,
+							error: undefined,
+						});
+						this.uploads.delete(id);
+						this.onComplete();
 					}
 				},
 			});
 			this.uploads.set(id, upload);
 		}
 		upload.start();
-	}
-	async publish(task: UploadTask) {
-		if (
-			this.disposed ||
-			["publishing", "deleting", "complete"].includes(task.status)
-		)
-			return;
-		const url = task.url || this.uploads.get(task.id)?.url;
-		if (!url || !this.validUrl(url)) {
-			this.update(task, { status: "error", error: "无法取得上传地址。" });
-			return;
-		}
-		this.update(task, { status: "publishing", bytes: task.size, url });
-		try {
-			const response = await fetch(`${url}/complete`, { method: "POST" });
-			const result = await response.json();
-			if (!response.ok || !result.success)
-				throw new Error(result.error || "发布失败，请重试。");
-			this.update(task, { status: "complete", error: undefined });
-			this.uploads.delete(task.id);
-			this.onComplete();
-		} catch (error) {
-			this.update(task, { status: "error", error: (error as Error).message });
-		}
 	}
 	async pause(id: string) {
 		const task = this.tasks.find((t) => t.id === id);
@@ -232,7 +167,7 @@ export class UploadQueue {
 			this.update(task, { status: "paused" });
 			return;
 		}
-		if (!task || task.status !== "uploading") return;
+		if (task?.status !== "uploading") return;
 		this.update(task, { status: "pausing" });
 		try {
 			await this.uploads.get(id)?.abort();
@@ -243,8 +178,7 @@ export class UploadQueue {
 	}
 	async remove(id: string) {
 		const task = this.tasks.find((t) => t.id === id);
-		if (!task || ["pausing", "publishing", "deleting"].includes(task.status))
-			return;
+		if (!task || ["pausing", "deleting"].includes(task.status)) return;
 		const complete = task.status === "complete";
 		this.pending.delete(id);
 		this.update(task, { status: "deleting", error: undefined });
@@ -253,7 +187,7 @@ export class UploadQueue {
 			await upload?.abort();
 			const url = task.url || upload?.url;
 			if (url && !complete) {
-				if (!this.validUrl(url)) throw new Error("Invalid upload URL");
+				if (!validUrl(url)) throw new Error("Invalid upload URL");
 				const response = await fetch(url, {
 					method: "DELETE",
 					headers: { "Tus-Resumable": "1.0.0" },
@@ -262,7 +196,7 @@ export class UploadQueue {
 					throw new Error("删除上传失败，请重试。");
 			}
 			this.uploads.delete(id);
-			this.tasks = this.tasks.filter((t) => t.id !== id);
+			this.tasks = removeTask(this.tasks, id);
 			this.emit();
 		} catch (error) {
 			this.update(task, { status: "error", error: (error as Error).message });
@@ -273,5 +207,18 @@ export class UploadQueue {
 		this.pending.clear();
 		for (const upload of this.uploads.values()) void upload.abort();
 		this.uploads.clear();
+	}
+}
+function validUrl(url: string) {
+	try {
+		const parsed = new URL(url, location.origin);
+		return (
+			parsed.origin === location.origin &&
+			/^\/uploads\/[a-f0-9]{32}$/.test(parsed.pathname) &&
+			!parsed.search &&
+			!parsed.hash
+		);
+	} catch {
+		return false;
 	}
 }

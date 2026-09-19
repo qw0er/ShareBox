@@ -19,7 +19,6 @@ const labels: Record<UploadStatus, string> = {
 	uploading: "上传中",
 	pausing: "正在暂停",
 	paused: "已暂停",
-	publishing: "正在发布",
 	error: "失败",
 	complete: "上传成功",
 	deleting: "正在删除",
@@ -49,9 +48,8 @@ export default function UploadPanel({
 		return () => queue.dispose();
 	}, [queue]);
 	const busy =
-		tasks.filter((t) =>
-			["uploading", "pausing", "publishing"].includes(t.status),
-		).length >= 2;
+		tasks.filter((t) => ["uploading", "pausing"].includes(t.status)).length >=
+		2;
 	return (
 		<Paper
 			component="section"
@@ -83,6 +81,8 @@ export default function UploadPanel({
 					开始全部上传
 				</Button>
 				{tasks.map((task) => {
+					const finishing =
+						task.status === "uploading" && task.bytes === task.size;
 					const progress = task.size
 						? Math.min(100, (task.bytes / task.size) * 100)
 						: task.status === "complete"
@@ -94,14 +94,13 @@ export default function UploadPanel({
 								{task.name}
 							</Typography>
 							<Typography variant="caption" role="status">
-								{labels[task.status]} · {formatSize(task.bytes)} /{" "}
-								{formatSize(task.size)} · {progress.toFixed(1)}%
+								{finishing ? "正在完成" : labels[task.status]} ·{" "}
+								{formatSize(task.bytes)} / {formatSize(task.size)} ·{" "}
+								{progress.toFixed(1)}%
 							</Typography>
 							<LinearProgress
 								aria-label={`${task.name} 上传进度`}
-								variant={
-									task.status === "publishing" ? "indeterminate" : "determinate"
-								}
+								variant={finishing ? "indeterminate" : "determinate"}
 								value={progress}
 								sx={{ my: 1 }}
 							/>
@@ -124,19 +123,15 @@ export default function UploadPanel({
 										暂停
 									</Button>
 								) : (
-									!["complete", "pausing", "publishing", "deleting"].includes(
+									!["complete", "pausing", "deleting"].includes(
 										task.status,
 									) && (
 										<Button
 											disabled={
-												busy ||
-												task.size > maxUploadBytes ||
-												(!task.file && !task.transferred)
+												busy || task.size > maxUploadBytes || !task.file
 											}
 											onClick={() => {
-												if (task.url && task.transferred)
-													void queue.publish(task);
-												else void queue.start(task.id, maxUploadBytes);
+												void queue.start(task.id, maxUploadBytes);
 											}}
 										>
 											{task.status === "ready" ? "开始上传" : "继续 / 重试"}
@@ -145,9 +140,7 @@ export default function UploadPanel({
 								)}
 								<Button
 									color="error"
-									disabled={["pausing", "publishing", "deleting"].includes(
-										task.status,
-									)}
+									disabled={["pausing", "deleting"].includes(task.status)}
 									onClick={() => void queue.remove(task.id)}
 								>
 									{task.status === "complete" ? "移除记录" : "删除上传"}

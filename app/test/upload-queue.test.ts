@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
 const clients = vi.hoisted(
 	() =>
 		[] as {
@@ -20,7 +21,9 @@ vi.mock("tus-js-client", () => ({
 		}
 	},
 }));
+
 import { UploadQueue } from "../components/upload/upload-queue";
+
 const url = "http://localhost/uploads/0123456789abcdef0123456789abcdef";
 let queue: UploadQueue;
 let onComplete: ReturnType<typeof vi.fn<() => void>>;
@@ -43,7 +46,10 @@ afterEach(() => {
 });
 it("shows progress and pauses without terminating, then resumes the same client", async () => {
 	const id = queue.tasks[0].id;
+	const beforeStart = queue.tasks;
 	await queue.start(id, 100);
+	expect(queue.tasks).not.toBe(beforeStart);
+	expect(beforeStart[0].status).toBe("ready");
 	clients[0].options.onProgress(2, 5);
 	expect(queue.tasks[0].bytes).toBe(2);
 	await queue.pause(id);
@@ -53,25 +59,32 @@ it("shows progress and pauses without terminating, then resumes the same client"
 	expect(clients).toHaveLength(1);
 	expect(clients[0].start).toHaveBeenCalledTimes(2);
 });
-it("does not report success until publication succeeds; failed publication can retry", async () => {
-	await queue.start(queue.tasks[0].id, 100);
-	clients[0].options.onAfterResponse(null, { getHeader: () => url });
-	vi.mocked(fetch).mockResolvedValueOnce(
-		Response.json({ error: "disk full" }, { status: 500 }),
+it("waits for tus success after 100% progress and retries errors through tus", async () => {
+	const id = queue.tasks[0].id;
+	await queue.start(id, 100);
+	clients[0].options.onAfterResponse(
+		{ getMethod: () => "POST" },
+		{ getHeader: () => url, getStatus: () => 201 },
 	);
-	clients[0].options.onSuccess();
-	await vi.waitFor(() => expect(queue.tasks[0].status).toBe("error"));
+	clients[0].options.onProgress(5, 5);
+	expect(queue.tasks[0].status).toBe("uploading");
 	expect(onComplete).not.toHaveBeenCalled();
-	expect(queue.tasks[0].transferred).toBe(true);
-	vi.mocked(fetch).mockResolvedValueOnce(Response.json({ success: true }));
-	await queue.publish(queue.tasks[0]);
-	expect(queue.tasks[0].status).toBe("complete");
+	clients[0].options.onError(new Error("disk full"));
+	expect(queue.tasks[0].status).toBe("error");
+	await queue.start(id, 100);
+	expect(clients[0].start).toHaveBeenCalledTimes(2);
+	clients[0].options.onSuccess();
+	expect(queue.tasks[0]).toMatchObject({ status: "complete", bytes: 5 });
 	expect(onComplete).toHaveBeenCalledTimes(1);
+	expect(fetch).not.toHaveBeenCalled();
 });
 it("keeps a task when DELETE fails and removes it only after confirmed termination", async () => {
 	const id = queue.tasks[0].id;
 	await queue.start(id, 100);
-	clients[0].options.onAfterResponse(null, { getHeader: () => url });
+	clients[0].options.onAfterResponse(
+		{ getMethod: () => "POST" },
+		{ getHeader: () => url, getStatus: () => 201 },
+	);
 	vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 500 }));
 	await queue.remove(id);
 	expect(queue.tasks[0].status).toBe("error");
@@ -85,7 +98,10 @@ it("keeps a task when DELETE fails and removes it only after confirmed terminati
 });
 it("restores a paused task and resumes after reselecting its local file", async () => {
 	await queue.start(queue.tasks[0].id, 100);
-	clients[0].options.onAfterResponse(null, { getHeader: () => url });
+	clients[0].options.onAfterResponse(
+		{ getMethod: () => "POST" },
+		{ getHeader: () => url, getStatus: () => 201 },
+	);
 	queue.dispose();
 	queue = new UploadQueue(onComplete);
 	queue.restore();
@@ -130,4 +146,70 @@ it("starts the next queued file when a transfer fails and allows pausing queued 
 	await vi.waitFor(() => expect(clients).toHaveLength(3));
 	expect(queue.tasks[2].status).toBe("uploading");
 	expect(queue.tasks[3].status).toBe("paused");
+});
+
+it("restores legacy publication tasks as ordinary resumable uploads", async () => {
+	localStorage.setItem(
+		"sharebox.uploads.v1",
+		JSON.stringify([
+			{
+				id: "legacy",
+				name: "test.txt",
+				size: 5,
+				lastModified: 1,
+				bytes: 5,
+				status: "publishing",
+				transferred: true,
+				url,
+			},
+		]),
+	);
+	queue.restore();
+	expect(queue.tasks[0]).toMatchObject({ status: "paused", url, bytes: 5 });
+	expect(queue.tasks[0]).not.toHaveProperty("transferred");
+	queue.add([new File(["hello"], "test.txt", { lastModified: 1 })], 100);
+	await queue.start("legacy", 100);
+	expect(clients[0].options.uploadUrl).toBe(url);
+	clients[0].options.onSuccess();
+	expect(queue.tasks[0].status).toBe("complete");
+});
+
+it("prevents tus from replacing an upload after a failed completion HEAD", async () => {
+	await queue.start(queue.tasks[0].id, 100);
+	const callback = clients[0].options.onAfterResponse;
+	for (const status of [409, 423, 500]) {
+		expect(() =>
+			callback(
+				{ getMethod: () => "HEAD" },
+				{
+					getStatus: () => status,
+					getHeader: () => null,
+				},
+			),
+		).toThrow("无法确认上传完成");
+	}
+	for (const status of [200, 404, 410]) {
+		expect(() =>
+			callback(
+				{ getMethod: () => "HEAD" },
+				{
+					getStatus: () => status,
+					getHeader: () => null,
+				},
+			),
+		).not.toThrow();
+	}
+});
+
+it("keeps the snapshot callback bound when React calls it independently", () => {
+	const snapshot = queue.getSnapshot;
+	expect(snapshot()).toBe(queue.tasks);
+});
+
+it("ignores a late success callback after disposal", async () => {
+	await queue.start(queue.tasks[0].id, 100);
+	queue.dispose();
+	clients[0].options.onSuccess();
+	expect(onComplete).not.toHaveBeenCalled();
+	expect(queue.tasks[0].status).not.toBe("complete");
 });
