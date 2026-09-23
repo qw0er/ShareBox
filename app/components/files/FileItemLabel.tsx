@@ -6,6 +6,7 @@ import { Stack, Typography } from "@mui/material";
 import type { FileNode } from "~/types/files";
 import { formatSize } from "~/utils/file-format";
 import DeleteFileButton from "./DeleteFileButton";
+import RenameButton from "./RenameButton";
 
 export default function FileItemLabel({ node }: { node: FileNode }) {
 	const Icon =
@@ -45,6 +46,7 @@ export default function FileItemLabel({ node }: { node: FileNode }) {
 					? `${node.children.length} 项`
 					: formatSize(node.size)}
 			</Typography>
+			<RenameButton node={node} />
 			<DeleteFileButton node={node} />
 		</Stack>
 	);

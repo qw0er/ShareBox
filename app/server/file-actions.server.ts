@@ -2,9 +2,11 @@ import type { FileActionResult } from "./action-types.server";
 import { CONFIG } from "./config.server";
 import { logger } from "./logger.server";
 import { handleRemoveAction } from "./remove-action.server";
+import { handleRenameAction } from "./rename-action.server";
 
 const actionHandlers = {
 	remove: handleRemoveAction,
+	rename: handleRenameAction,
 } as const;
 
 type FileActionIntent = keyof typeof actionHandlers;
