@@ -15,22 +15,9 @@ ShareBox 是一个面向个人服务器的轻量文件管理与分享工具。�
 
 刷新页面后恢复未完成的上传，通常需要重新选择原文件。“移除记录”只移除已完成的上传记录，不会删除公开文件。
 
-
 ## Docker 单容器部署（推荐）
 
 服务器只需安装 Docker，无需安装 Node.js、npm 或在宿主机运行构建。运行镜像基于 `node:24-alpine`，包含 Node.js 24、生产依赖、浏览器资源和 SSR 服务，以非 root 的 `node` 用户（UID/GID `1000:1000`）运行。Caddy 仍在宿主机通过系统包安装，负责 HTTPS 和认证；此方案只有 ShareBox 一个容器。
-
-### 准备镜像
-
-当前仓库提供 Dockerfile，尚未提供预构建镜像。先按照后面的[构建 Docker 镜像](#构建-docker-镜像)生成与服务器 CPU 架构匹配的 `sharebox:1.5.1` 镜像。服务器无需安装 Node.js 或 npm。
-
-如果镜像是在其他机器构建并导出的，将压缩包传到服务器后导入：
-
-```bash
-docker load -i sharebox-image-1.5.1.tar.gz
-```
-
-### 启动容器
 
 在服务器准备持久目录并启动：
 
@@ -44,7 +31,7 @@ docker run -d \
   --env USER_URL=admin.example.com \
   --publish 127.0.0.1:8123:8123 \
   --mount type=bind,src=/var/lib/sharebox,dst=/var/lib/sharebox \
-  sharebox:1.5.1
+  ghcr.io/qw0er/sharebox:latest
 ```
 
 `USER_URL` 是必填的生产运行配置，替换为你的管理端主机名（不含协议或路径，例如 `admin.example.com`，非默认端口可写成 `admin.example.com:8443`）。它必须与 Caddy 管理地址一致。缺少或格式无效时应用会在启动时报错。
@@ -100,9 +87,10 @@ Caddy 认证、HTTPS、公开浏览下载和管理应用停止后的下载能力
 
 ### 更新与备份
 
-更新时先构建或导入新版本镜像，然后停止、删除旧容器，再使用新标签执行同一个 `docker run` 命令：
+更新前给当前镜像保留一个独立标签，以便回滚。拉取最新镜像后停止、删除旧容器，再执行上面的 `docker run` 命令：
 
 ```bash
+docker pull ghcr.io/qw0er/sharebox:latest
 docker stop sharebox
 docker rm sharebox
 ```
@@ -233,11 +221,14 @@ docker build --pull -f packages/Dockerfile -t sharebox:1.5.1 .
 
 镜像不绑定管理域名；构建不需要 `USER_URL`，部署时通过 `docker run --env USER_URL=...` 指定。`.dockerignore` 仅允许必要的构建输入，排除宿主机 `.env`、本地数据、凭据和依赖目录。构建需要联网拉取基础镜像和 npm 依赖。
 
-可以直接在服务器用源码构建，也可以在其他机器构建后导出镜像并传到服务器：
+自构建镜像使用本地标签 `sharebox:1.5.1`；运行时将前面 `docker run` 命令中的 GHCR 镜像地址替换为该标签。可以直接在服务器用源码构建，也可以在其他机器构建后导出镜像并传到服务器：
 
 ```bash
 # 将镜像导出，随后把压缩包传到服务器
 docker save sharebox:1.5.1 | gzip > sharebox-image-1.5.1.tar.gz
+
+# 服务器导入自构建镜像
+docker load -i sharebox-image-1.5.1.tar.gz
 ```
 
 镜像必须匹配服务器 CPU 架构；例如在 ARM Mac 上为 x86_64 Linux 服务器构建时，构建命令增加 `--platform linux/amd64`。
