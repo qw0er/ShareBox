@@ -1,14 +1,5 @@
 # Agents.md
 
-## 技术栈
-
-- Nodejs
-- Typescript
-- React Router Framework
-- MUI + Icons
-- Pino
-- Vitest
-
 ## 项目约束
 
 - 在边界和关键逻辑部分记录日志

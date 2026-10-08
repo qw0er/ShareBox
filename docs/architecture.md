@@ -40,7 +40,7 @@ flowchart LR
 
 ## 4. 文件存储
 
-配置两个独立目录，允许位于不同文件系统：
+`STATE_DIR` 可选，用于覆盖唯一的状态根目录；未设置或为空时，通过 `platformdirs.userDataDir("sharebox", false)` 使用当前用户的平台默认数据路径，不带版本子目录。程序在启动时创建和检查内部目录。Docker 镜像显式设置 `/var/lib/sharebox` 并挂载整个根目录：
 
 | 目录示例 | 用途 |
 | --- | --- |
@@ -52,10 +52,10 @@ flowchart LR
 ### 上传流程
 
 1. Caddy 对全部上传请求验证 Basic Auth，应用验证来源、文件名和声明大小。
-2. FileStore 在 `UPLOAD_TMP_DIR/tus` 保存随机 ID 命名的数据和 JSON 元数据。PATCH 流式追加；偏移不一致返回 409，客户端 HEAD 后重试。
+2. FileStore 在 `STATE_DIR/tmp/tus` 保存随机 ID 命名的数据和 JSON 元数据。PATCH 流式追加；偏移不一致返回 409，客户端 HEAD 后重试。
 3. 前端显示发送进度，暂停通过 abort 终止当前请求但保留任务。恢复时以服务器磁盘偏移为准。删除上传调用 tus DELETE，服务端清理数据与元数据。
 4. 最后一次 PATCH（零字节文件为创建 POST）调用 `onUploadFinish`。钩子重新获取与 tus 共用的任务锁，检查实际长度，执行 `copyFile(COPYFILE_EXCL)`，跨文件系统自动发布且禁止覆盖。钩子返回前不向客户端确认成功。
-5. 发布成功后在 `UPLOAD_TMP_DIR/tus-receipts` 保存包含文件名和大小的小型完成回执（先写临时记录再重命名）。等 tus 请求处理结束后清理临时数据，避免零字节 POST 的后续读取失败。HEAD 在返回前检查完成状态：已传完但尚未发布时自动重试完成处理，失败返回错误且不返回完成偏移；存在回执时即使源文件已清理也返回完成偏移，支持重启及最后响应丢失后的恢复。客户端拦截非 404/410 的 HEAD 错误，防止 tus 自动另建任务。
+5. 发布成功后在 `STATE_DIR/tmp/tus-receipts` 保存包含文件名和大小的小型完成回执（先写临时记录再重命名）。等 tus 请求处理结束后清理临时数据，避免零字节 POST 的后续读取失败。HEAD 在返回前检查完成状态：已传完但尚未发布时自动重试完成处理，失败返回错误且不返回完成偏移；存在回执时即使源文件已清理也返回完成偏移，支持重启及最后响应丢失后的恢复。客户端拦截非 404/410 的 HEAD 错误，防止 tus 自动另建任务。
 6. 上传任务从创建起保留 7 天，首次访问及之后每小时清理，清理跳过正在持锁或正在创建的任务。回执从写入起保留 7 天。来源、路径、元数据、回执校验以及过期判断和响应头转换由类外纯函数完成（时间显式传入）；目录准备、复制和回执读写由类外无实例状态的 I/O 函数完成，调用位置仍受共享锁保护。服务实例持有 FileStore、Server、共享锁及定时器；清理任务不重叠执行，`dispose()` 释放定时器并等待清理结束。初始化失败会清空失败的 Promise，允许下次请求重试。只支持单个 Node 进程，进程内锁不能用于多实例共享目录。
 
 复制发布继续沿用非原子契约：复制期间公开文件可能不完整，强制终止可能留下残缺文件；复制成功但回执落盘前崩溃时，重试会报告同名冲突，需人工核对。没有整文件哈希校验。短块请求避免整个大文件共用 5 分钟接收窗口，但每个请求仍受 Node/代理超时约束，中断可续传。
@@ -72,23 +72,22 @@ flowchart LR
 
 - Caddy 对管理域名下的全部请求应用 `basic_auth`；公开域名不认证。
 - Basic Auth 密码使用 `caddy hash-password` 生成哈希，配置中不保存明文密码。
-- 部署脚本默认监听 `127.0.0.1:8123`，以非 root 用户运行；公开目录和文件权限默认分别为 `0755`、`0644`，供独立的 Caddy 用户读取。这些是部署默认值，不是产品验收约束。
-- 删除 action 只接受 POST；上传资源支持 POST/HEAD/PATCH/DELETE。写请求要求 `Origin` 存在且与构建时 `USER_URL` 对应的 HTTPS 来源一致。本地开发时与请求 URL 的来源比较；生产域名在构建时固定。React Router 的 `allowedActionOrigins` 仍保留。
+- Docker 镜像以非 root 用户运行，容器内监听 `0.0.0.0:8123`，部署命令仅将端口发布到宿主机 `127.0.0.1:8123`；公开目录和文件权限分别采用 `0755`、`0644`，供独立的 Caddy 用户读取。这些是部署默认值，不是产品验收约束。
+- 删除 action 只接受 POST；上传资源支持 POST/HEAD/PATCH/DELETE。写请求要求 `Origin` 存在且与运行时 `USER_URL` 对应的 HTTPS 来源一致。本地开发时与请求 URL 的来源比较；生产域名在启动时读取，缺少或格式无效时拒绝启动。`packages/server.mjs` 将同一个运行时域名提供给 React Router 的 `allowedActionOrigins`。
 - 文件名必须是单个名称，拒绝绝对路径、路径分隔符、父目录引用、NUL、空名称及保留名称（`.`、`..`）。
 - 上传不覆盖任何已有目录项，因此不会写入同名符号链接的目标；读取和删除逐级检查符号链接。
 - 同名文件一律拒绝。上传发布必须避免检查与发布之间的并发覆盖。
 - Caddy 使用 `file_server browse` 提供公开文件列表，并以 `index ""` 禁用默认索引文件，避免名为 `index.html` 的上传文件替代列表页。
 
-运行时只需 `caddy` 和 `sharebox` 两个服务。配置包含管理端域名、公开端域名、应用监听地址、公开目录、临时目录和上传大小限制。
+运行时只需 `caddy` 和 `sharebox` 两个服务。配置包含管理端域名、公开端域名、应用监听地址、状态根目录和上传大小限制。
 
 ## 6. 配置与部署验证
 
-- `DATA_DIR`：已存在的数据根目录。
-- `UPLOAD_TMP_DIR`：私有上传临时目录，默认 `<DATA_DIR 的真实路径>.tmp`；不能与公开目录重叠，可位于不同文件系统。部署脚本配置为 `/var/lib/sharebox/tmp`，并加入 systemd 可写路径。
-- `MAX_UPLOAD_BYTES`：单文件最大字节数，默认 `10737418240`（10 GiB），必须为正安全整数。部署时可用 `SHAREBOX_MAX_UPLOAD_BYTES` 设置。表单总字节数另限为（单文件上限加 64 KiB）× 100，最多为 JavaScript 最大安全整数，文本字段限为 4 KiB。
-- `USER_URL`：构建时管理端主机名，不含协议和路径；修改后重新构建。
+- `STATE_DIR`：可选的状态根目录覆盖项；未设置或为空时使用 `platformdirs` 提供的平台默认用户数据路径（Linux 为 `$XDG_DATA_HOME/sharebox` 或 `~/.local/share/sharebox`，macOS 为 `~/Library/Application Support/sharebox`，Windows 为 `%LOCALAPPDATA%\sharebox`）。Docker 镜像显式设置为 `/var/lib/sharebox`；程序创建并维护 `data/`、`tmp/tus/` 和 `tmp/tus-receipts/`，保留已有文件，拒绝符号链接和非目录路径，将私有目录权限设为 `0700`。旧的 `DATA_DIR`、`UPLOAD_TMP_DIR` 配置会被拒绝并提示迁移。
+- `MAX_UPLOAD_BYTES`：单文件最大字节数，默认 `10737418240`（10 GiB），必须为正安全整数。Docker 部署时可用 `-e MAX_UPLOAD_BYTES=...` 设置。表单总字节数另限为（单文件上限加 64 KiB）× 100，最多为 JavaScript 最大安全整数，文本字段限为 4 KiB。
+- `USER_URL`：生产运行时必填的管理端主机名，可包含非默认端口，不含协议和路径；修改后重启应用或重新创建容器，无需重新构建镜像。本地开发使用请求 URL 的同源检查。
 - `LOGGER_LEVEL`：日志级别，默认 `info`。日志写入标准输出。
 
-示例见 [`Caddyfile.example`](../Caddyfile.example)。替换域名、用户名和 `caddy hash-password` 生成的密码哈希；公开域名的 root 与 DATA_DIR 一致。配置、日志、备份和临时文件均放在公开目录之外；不要通过服务器手动向公开目录放入符号链接，因为 Caddy 的文件根目录本身不是符号链接沙箱。
+示例见 [`Caddyfile.example`](../Caddyfile.example)。替换域名、用户名和 `caddy hash-password` 生成的密码哈希；公开域名的 root 只指向宿主机状态根目录下的 `data/`。配置、日志、备份和临时文件均放在公开目录之外；不要通过服务器手动向公开目录放入符号链接，因为 Caddy 的文件根目录本身不是符号链接沙箱。
 
 Caddy 认证、双域名 HTTPS、匿名公开浏览下载和管理应用停止后的下载能力，已由部署者于 2026-09-13 确认手动验证。示例配置及其替换说明参考 [Caddy file_server 文档](https://caddyserver.com/docs/caddyfile/directives/file_server)。

@@ -143,7 +143,7 @@ async function prepareUploadDirectories(
 	config: Pick<typeof CONFIG, "datadir" | "tempdir">,
 ) {
 	const publicRoot = await realpath(config.datadir);
-	const tempRoot = path.resolve(config.tempdir || `${publicRoot}.tmp`);
+	const tempRoot = path.resolve(config.tempdir);
 	await mkdir(tempRoot, { recursive: true, mode: 0o700 });
 	const resolved = await realpath(tempRoot);
 	validateDirectoryLayout(publicRoot, resolved);

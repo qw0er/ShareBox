@@ -1,7 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
 import { loadEnvFile } from "node:process";
+import { userDataDir } from "platformdirs";
 import { LOGGER_LEVEL, logger } from "./logger.server";
+import { initializeStorage } from "./storage.server";
 
 try {
 	loadEnvFile();
@@ -9,30 +9,50 @@ try {
 	logger.info("No .env file found, using environment variables");
 }
 
+if (
+	process.env.DATA_DIR !== undefined ||
+	process.env.UPLOAD_TMP_DIR !== undefined
+) {
+	logger.error(
+		"Obsolete storage configuration; replace DATA_DIR and UPLOAD_TMP_DIR with STATE_DIR",
+	);
+	throw new Error(
+		"DATA_DIR and UPLOAD_TMP_DIR are no longer supported; set STATE_DIR to the parent of data/ and tmp/ instead",
+	);
+}
+
+const maxUploadBytes = getUploadLimit();
+const adminHost = getAdminHost();
+const storage = initializeStorage(
+	process.env.STATE_DIR || userDataDir("sharebox", false),
+);
+
 export const CONFIG = {
-	datadir: getDATA_DIR(),
+	datadir: storage.datadir,
 	loggerLevel: LOGGER_LEVEL,
-	tempdir: process.env.UPLOAD_TMP_DIR || "",
-	maxUploadBytes: getUploadLimit(),
-	adminHost: import.meta.env.PROD
-		? import.meta.env.SHAREBOX_ADMIN_HOST || ""
-		: "",
+	tempdir: storage.tempdir,
+	maxUploadBytes,
+	adminHost,
 };
 
-logger.info({ dataDir: CONFIG.datadir }, "Configuration loaded");
+logger.info({ dataDir: CONFIG.datadir, adminHost }, "Configuration loaded");
 
-function getDATA_DIR(): string {
-	if (!process.env.DATA_DIR) {
-		throw new Error("DATA_DIR environment variable is not set");
+function getAdminHost(): string {
+	if (!import.meta.env.PROD) return "";
+	const value = process.env.USER_URL?.trim();
+	try {
+		if (!value || /[\\/\s?#@*]/.test(value)) {
+			throw new Error("Missing or invalid host");
+		}
+		const url = new URL(`https://${value}`);
+		if (!url.hostname || url.port === "0") throw new Error("Invalid host");
+		return url.host;
+	} catch (err) {
+		logger.error({ err }, "Invalid runtime USER_URL configuration");
+		throw new Error(
+			"USER_URL is required in production and must be a host without a protocol or path (for example admin.example.com)",
+		);
 	}
-	const datadir = path.resolve(process.env.DATA_DIR);
-	if (!fs.existsSync(datadir)) {
-		throw new Error(`Data directory does not exist: ${datadir}`);
-	}
-	if (!fs.lstatSync(datadir).isDirectory()) {
-		throw new Error(`Data directory is not a directory: ${datadir}`);
-	}
-	return datadir;
 }
 
 function getUploadLimit(): number {

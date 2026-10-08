@@ -1,0 +1,14 @@
+# Allow only build inputs; keep credentials, data and local tooling out.
+**
+!packages/
+!packages/Dockerfile
+!packages/server.mjs
+!package.json
+!package-lock.json
+!app/
+!app/**
+!public/
+!public/**
+!react-router.config.ts
+!vite.config.ts
+!tsconfig.json

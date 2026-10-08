@@ -21,13 +21,15 @@
 | `app/server/remove-action.server.ts` | 删除 action 的字段校验、文件操作、日志和错误映射 |
 | `app/server/action-types.server.ts` | 各文件 action 共用的上下文和返回类型 |
 | `app/server/core.server.ts` | 文件树读取和受目录边界约束的删除操作 |
-| `app/server/config.server.ts` | 存储目录、临时目录、上传限额与来源配置及启动检查 |
+| `app/server/config.server.ts` | 状态根目录、上传限额与来源配置及启动检查 |
+| `app/server/storage.server.ts` | 创建和校验状态根目录及内部目录，保护私有目录权限并记录初始化日志 |
 | `app/server/logger.server.ts` | Pino 服务端日志实例，直接写入标准输出 |
 | `app/server/*.test.ts` | 文件系统核心与 action 的服务端测试 |
 | `app/types/files.ts` | 前后端共享的文件节点类型 |
 | `app/utils/file-format.ts` | 文件大小格式化 |
-| `scripts/build_source.sh` | 构建、校验并生成生产发布包 |
-| `scripts/deploy_server.sh` | 在 Linux 服务器创建隔离用户、替换程序并管理 systemd 服务 |
+| `packages/Dockerfile` | 多阶段构建应用，在 Alpine 中安装生产依赖并以非 root 用户运行 |
+| `packages/server.mjs` | 加载生产构建，使用运行时 USER_URL 覆盖 React Router 允许的 action 来源 |
+| `.dockerignore` | 限制项目根目录中的 Docker 构建输入 |
 
 页面数据由 loader 提供；上传通过 tus 资源路由，发布成功后主动重新验证 loader；删除公开文件通过 fetcher 调用 action。旧 multipart 上传服务保留兼容。展示组件不直接访问文件系统，上传组件也不依赖文件树的展示组件。`app/test/tus.server.test.ts` 覆盖续传、重启、中断、自动发布、复制失败与响应丢失恢复、并发删除/清理、冲突、过期及初始化重试，`app/test/upload-queue.test.ts` 覆盖客户端进度和任务控制。
 

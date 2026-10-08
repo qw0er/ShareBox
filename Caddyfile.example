@@ -1,6 +1,6 @@
 # Replace both domains, the username, and the password hash before use.
 # Generate the hash with: caddy hash-password
-# USER_URL in ShareBox's build-time .env must match admin.example.com.
+# Runtime USER_URL must match admin.example.com (docker run --env USER_URL=...).
 admin.example.com {
 	basic_auth {
 		admin REPLACE_WITH_CADDY_PASSWORD_HASH
@@ -9,7 +9,7 @@ admin.example.com {
 }
 
 files.example.com {
-	# Must match ShareBox DATA_DIR. Never point this at the app or tmp directory.
+	# Only expose the data/ child of the host STATE_DIR. Never expose the state root or tmp/.
 	root * /var/lib/sharebox/data
 	file_server browse {
 		# An empty index name prevents index.html/index.txt from replacing the list.

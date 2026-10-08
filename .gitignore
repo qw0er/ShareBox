@@ -6,4 +6,8 @@
 /.react-router/
 /build/
 dist/
+/.local/
 .codex
+.agents
+
+tmp/

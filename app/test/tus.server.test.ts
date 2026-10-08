@@ -1,18 +1,18 @@
 import {
 	copyFile,
-	mkdir,
-	rename,
 	lstat,
-	utimes,
+	mkdir,
 	mkdtemp,
-	readFile,
 	readdir,
+	readFile,
+	rename,
 	rm,
+	utimes,
 	writeFile,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -23,7 +23,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 	};
 });
 
-process.env.DATA_DIR = process.cwd();
+const initialState = await mkdtemp(
+	path.join(os.tmpdir(), "sharebox-test-state-"),
+);
+process.env.STATE_DIR = initialState;
+delete process.env.DATA_DIR;
+delete process.env.UPLOAD_TMP_DIR;
 process.env.LOGGER_LEVEL = "silent";
 const { createUploadService, UploadService, handleTusRequest } = await import(
 	"../server/tus.server"
@@ -563,3 +568,13 @@ it("uses the same strict expiration boundary for completion and cleanup", async 
 	await service.cleanup();
 	expect((await request("HEAD", url)).status).toBe(404);
 });
+
+afterAll(async () => {
+	await rm(initialState, { recursive: true, force: true });
+});
+
+// Runtime configuration tests must not load the developer's private .env.
+vi.mock("node:process", async (importOriginal) => ({
+	...(await importOriginal<typeof import("node:process")>()),
+	loadEnvFile: vi.fn(),
+}));

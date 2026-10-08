@@ -6,7 +6,7 @@
   "scripts": {
     "build": "react-router build",
     "dev": "react-router dev",
-    "start": " react-router-serve ./build/server/index.js",
+    "start": "react-router-serve ./packages/server.mjs",
     "test": "vitest run",
     "typecheck": "react-router typegen && tsc"
   },
@@ -22,6 +22,7 @@
     "@tus/server": "^2.4.5",
     "isbot": "^5.1.36",
     "pino": "^10.3.1",
+    "platformdirs": "^4.3.8-rc3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router": "^8",

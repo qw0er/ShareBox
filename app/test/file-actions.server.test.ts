@@ -2,9 +2,22 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+	afterAll,
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 
-process.env.DATA_DIR = process.cwd();
+const initialState = await mkdtemp(
+	path.join(os.tmpdir(), "sharebox-test-state-"),
+);
+process.env.STATE_DIR = initialState;
+delete process.env.DATA_DIR;
+delete process.env.UPLOAD_TMP_DIR;
 process.env.LOGGER_LEVEL = "silent";
 
 const { CONFIG } = await import("../server/config.server");
@@ -78,7 +91,10 @@ describe("file actions", () => {
 
 	it("does not remove a non-empty directory", async () => {
 		await mkdir(path.join(CONFIG.datadir, "not-empty"));
-		await writeFile(path.join(CONFIG.datadir, "not-empty", "file.txt"), "content");
+		await writeFile(
+			path.join(CONFIG.datadir, "not-empty", "file.txt"),
+			"content",
+		);
 		const form = new FormData();
 		form.set("intent", "remove");
 		form.set("path", "not-empty");
@@ -95,7 +111,9 @@ describe("file actions", () => {
 			form.set("intent", "remove");
 			form.set("path", pathValue);
 
-			await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
+			await expect(
+				handleFileAction(await actionRequest(form)),
+			).resolves.toEqual({
 				error: "Invalid file path",
 			});
 		},
@@ -132,3 +150,13 @@ describe("file actions", () => {
 		});
 	});
 });
+
+afterAll(async () => {
+	await rm(initialState, { recursive: true, force: true });
+});
+
+// Runtime configuration tests must not load the developer's private .env.
+vi.mock("node:process", async (importOriginal) => ({
+	...(await importOriginal<typeof import("node:process")>()),
+	loadEnvFile: vi.fn(),
+}));
