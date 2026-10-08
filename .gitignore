@@ -8,6 +8,5 @@
 dist/
 /.local/
 .codex
-.agents
 
 tmp/
