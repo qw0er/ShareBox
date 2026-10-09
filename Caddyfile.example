@@ -9,10 +9,17 @@ admin.example.com {
 }
 
 files.example.com {
-	# Only expose the data/ child of the host STATE_DIR. Never expose the state root or tmp/.
-	root * /var/lib/sharebox/data
-	file_server browse {
-		# An empty index name prevents index.html/index.txt from replacing the list.
-		index ""
+	# Public page, Framework loader requests, downloads and built page assets only.
+	@public_app path /public /public/* /public.data /assets/* /__manifest /favicon.ico /favicon.svg
+	handle @public_app {
+		reverse_proxy 127.0.0.1:8123
+	}
+	handle {
+		# Keep existing direct file links available while the application is stopped.
+		# Only expose data/, never the state root or tmp/.
+		root * /var/lib/sharebox/data
+		file_server browse {
+			index ""
+		}
 	}
 }

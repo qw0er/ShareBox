@@ -121,7 +121,11 @@ sudo systemctl reload caddy
 
 两个域名的 DNS 应指向服务器，并开放 HTTP/HTTPS 端口供 Caddy 提供服务和自动管理证书。配置中的 `index ""` 用于保持目录浏览；不要向公开目录放入符号链接。
 
-完成后，通过管理域名登录 ShareBox，通过公开域名浏览和下载文件。
+完成后，通过管理域名登录 ShareBox，通过 `https://files.example.com/public` 浏览和下载文件。公开页使用 React Router 服务端 loader 读取当前目录，下载入口为 `/public/download?path=...`，由应用流式传输并支持 HEAD 和单段 Range。
+
+公开域名仅将 `/public`、`/public/*`、`/public.data`、`/assets/*`、`/__manifest` 和图标请求代理到应用，不代理管理页面及上传接口。`/public.data` 是 Framework 的 loader 数据入口，`/__manifest` 用于路由发现。原来的公开文件地址和 Caddy 目录浏览继续保留，应用停止时这些旧入口仍可使用；新 `/public` 页面和下载入口需要应用运行。
+
+部署后检查：匿名打开 `/public`、进入子目录后刷新、下载中文文件名和空文件、发送 HEAD/Range 请求，并确认公开域名不能调用管理端上传和删除接口。
 
 ### 配置项
 
