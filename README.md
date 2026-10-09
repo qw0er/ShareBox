@@ -140,6 +140,8 @@ Docker 在镜像名称前添加 `--env 配置名=值`；Quadlet 在 `[Container]
 
 ### 查看状态与日志
 
+`npm run dev` 将标准输出通过管道交给 `pino-pretty`，显示易读的时间、日志级别、消息和上下文。应用日志始终输出 JSON，生产启动不经过美化管道；`LOGGER_LEVEL` 在各环境下均有效。
+
 ```bash
 docker ps --filter name=sharebox
 docker logs --tail 100 sharebox
