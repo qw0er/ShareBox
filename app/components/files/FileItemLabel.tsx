@@ -6,6 +6,7 @@ import { Stack, Typography } from "@mui/material";
 import type { FileNode } from "~/types/files";
 import { formatSize } from "~/utils/file-format";
 import DeleteFileButton from "./DeleteFileButton";
+import DownloadLinkButton from "./DownloadLinkButton";
 import RenameButton from "./RenameButton";
 
 export default function FileItemLabel({ node }: { node: FileNode }) {
@@ -46,6 +47,7 @@ export default function FileItemLabel({ node }: { node: FileNode }) {
 					? `${node.children.length} 项`
 					: formatSize(node.size)}
 			</Typography>
+			{node.type === "file" && <DownloadLinkButton node={node} />}
 			<RenameButton node={node} />
 			<DeleteFileButton node={node} />
 		</Stack>

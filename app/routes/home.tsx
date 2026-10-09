@@ -25,7 +25,10 @@ export async function loader() {
 			},
 			"File tree loaded",
 		);
-		return { fileTree, maxUploadBytes: CONFIG.maxUploadBytes };
+		return {
+			fileTree,
+			maxUploadBytes: CONFIG.maxUploadBytes,
+		};
 	} catch (error) {
 		logger.error(
 			{

@@ -10,15 +10,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 
-import {
-	afterAll,
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { getFileTree } from "../server/read-files.server";
 
@@ -156,9 +148,3 @@ describe("file system core", () => {
 		);
 	});
 });
-
-// Runtime configuration tests must not load the developer's private .env.
-vi.mock("node:process", async (importOriginal) => ({
-	...(await importOriginal<typeof import("node:process")>()),
-	loadEnvFile: vi.fn(),
-}));

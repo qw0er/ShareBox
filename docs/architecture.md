@@ -11,16 +11,16 @@ flowchart LR
     Admin[管理员浏览器] -->|HTTPS| Auth[Caddy Basic Auth]
     Auth -->|认证通过| App[React Router 管理应用]
     App -->|添加和删除| Files[公开根目录]
-    Visitor[访客浏览器] -->|HTTPS| Public[Caddy file_server]
-    Public -->|只读| Files
+    Visitor[访客浏览器] -->|HTTPS| Public[Caddy 公开路由代理]
+    Public -->|loader 和下载资源路由| App
 ```
 
 ## 2. 组件职责
 
 | 组件 | 职责 |
 | --- | --- |
-| Caddy | HTTPS、管理端 Basic Auth、反向代理、公开文件列表与下载 |
-| React Router Framework 应用 | 渲染单页文件管理界面，读取、上传和删除文件 |
+| Caddy | HTTPS、管理端 Basic Auth、公开路由与管理路由反向代理 |
+| React Router Framework 应用 | 渲染管理和公开界面，读取、上传、删除文件与流式下载 |
 | 本地文件系统 | 保存文件，并作为文件列表的唯一数据来源 |
 
 管理应用使用 Node.js 和 TypeScript，界面使用 React Router Framework 与 MUI。应用保留服务端运行时和 SSR，服务端 `loader` 读取文件列表，`action` 处理上传和删除。
@@ -70,28 +70,31 @@ flowchart LR
 
 资源路由 `/public/download` 调用 `downloadPublicFile`，逐级检查路径和符号链接，以 `O_NOFOLLOW` 打开普通文件，通过文件句柄流式读取，设置附件文件名、长度、Last-Modified 和 Accept-Ranges。支持单段、开放尾端和后缀 Range；不可满足的范围返回 416，多段范围退回完整响应；If-Range 日期不匹配时返回完整内容。HEAD 和空文件不创建数据流。请求取消及流关闭释放文件句柄；列表/下载请求边界与传输错误记录日志。读取模块复用根目录检查，管理端递归文件树契约保持不变。与既有文件操作相同，路径检查与打开之间仍存在并发替换父目录的竞态，不能作为针对本机恶意目录修改者的文件系统沙箱。
 
-公开域名仅代理 `/public`、`/public/*`、`/public.data`、构建静态资源、图标和路由发现 `/__manifest`；管理域名全部请求继续使用 Basic Auth。Caddy 保留直接文件服务，应用停止后原有文件直链仍可用；新公开页面和应用下载入口依赖应用运行。
+单域名下，Caddy 优先匿名代理 `/public`、`/public/*`、`/public.data`、构建静态资源、图标和路由发现 `/__manifest`，其余路由全部使用 Basic Auth，包括 `/`、`/index.data` 和上传接口。公开页与文件下载依赖应用运行，Caddy 不直接读取文件目录。
+
+管理页使用相对地址 `/public` 作为入口；点击生成链接时根据浏览器 `window.location.origin` 生成文件完整下载地址，确保反向代理后仍使用浏览器看到的 HTTPS 域名。地址由共用的 `publicDownloadUrl` 编码相对路径，不新增链接服务或持久化记录。点击“生成下载链接”显示只读地址，复制成功或剪贴板不可用时显示反馈。公开列表整行是链接：目录使用 Framework 导航，文件使用原生文档请求触发下载；不嵌套按钮，支持键盘操作。
+
 
 ## 5. 安全与运行约束
 
-- Caddy 对管理域名下的全部请求应用 `basic_auth`；公开域名不认证。
+- Caddy 在同域名内按路由区分认证：仅明确列出的公开入口不认证，其余请求应用 `basic_auth`。
 - Basic Auth 密码使用 `caddy hash-password` 生成哈希，配置中不保存明文密码。
 - Docker 镜像以非 root 用户运行，容器内监听 `0.0.0.0:8123`，部署命令仅将端口发布到宿主机 `127.0.0.1:8123`；公开目录和文件权限分别采用 `0755`、`0644`，供独立的 Caddy 用户读取。这些是部署默认值，不是产品验收约束。
 - 删除 action 只接受 POST；上传资源支持 POST/HEAD/PATCH/DELETE。写请求要求 `Origin` 存在且与运行时 `USER_URL` 对应的 HTTPS 来源一致。本地开发时与请求 URL 的来源比较；生产域名在启动时读取，缺少或格式无效时拒绝启动。`packages/server.mjs` 将同一个运行时域名提供给 React Router 的 `allowedActionOrigins`。
 - 文件名必须是单个名称，拒绝绝对路径、路径分隔符、父目录引用、NUL、空名称及保留名称（`.`、`..`）。
 - 上传不覆盖任何已有目录项，因此不会写入同名符号链接的目标；读取和删除逐级检查符号链接。
 - 同名文件一律拒绝。上传发布必须避免检查与发布之间的并发覆盖。
-- Caddy 使用 `file_server browse` 提供公开文件列表，并以 `index ""` 禁用默认索引文件，避免名为 `index.html` 的上传文件替代列表页。
+- 文件内容经下载资源路由以附件响应，上传的 `index.html` 不会替代公开页。
 
-运行时只需 `caddy` 和 `sharebox` 两个服务。配置包含管理端域名、公开端域名、应用监听地址、状态根目录和上传大小限制。
+运行时只需 `caddy` 和 `sharebox` 两个服务。配置包含站点域名、应用监听地址、状态根目录和上传大小限制。
 
 ## 6. 配置与部署验证
 
-- `STATE_DIR`：可选的状态根目录覆盖项；未设置或为空时使用 `platformdirs` 提供的平台默认用户数据路径（Linux 为 `$XDG_DATA_HOME/sharebox` 或 `~/.local/share/sharebox`，macOS 为 `~/Library/Application Support/sharebox`，Windows 为 `%LOCALAPPDATA%\sharebox`）。Docker 镜像显式设置为 `/var/lib/sharebox`；程序创建并维护 `data/`、`tmp/tus/` 和 `tmp/tus-receipts/`，保留已有文件，拒绝符号链接和非目录路径，将私有目录权限设为 `0700`。旧的 `DATA_DIR`、`UPLOAD_TMP_DIR` 配置会被拒绝并提示迁移。
+- `STATE_DIR`：可选的状态根目录覆盖项；未设置或为空时使用 `platformdirs` 提供的平台默认用户数据路径（Linux 为 `$XDG_DATA_HOME/sharebox` 或 `~/.local/share/sharebox`，macOS 为 `~/Library/Application Support/sharebox`，Windows 为 `%LOCALAPPDATA%\sharebox`）。Docker 镜像显式设置为 `/var/lib/sharebox`；程序创建并维护 `data/`、`tmp/tus/` 和 `tmp/tus-receipts/`，保留已有文件，拒绝符号链接和非目录路径，将私有目录权限设为 `0700`。旧的 `DATA_DIR`、`UPLOAD_TMP_DIR` 配置被忽略。应用配置和日志模块仅读取进程环境变量，不主动加载 `.env` 文件。
 - `MAX_UPLOAD_BYTES`：单文件最大字节数，默认 `10737418240`（10 GiB），必须为正安全整数。Docker 部署时可用 `-e MAX_UPLOAD_BYTES=...` 设置。表单总字节数另限为（单文件上限加 64 KiB）× 100，最多为 JavaScript 最大安全整数，文本字段限为 4 KiB。
 - `USER_URL`：生产运行时必填的管理端主机名，可包含非默认端口，不含协议和路径；修改后重启应用或重新创建容器，无需重新构建镜像。本地开发使用请求 URL 的同源检查。
 - `LOGGER_LEVEL`：日志级别，默认 `info`。日志写入标准输出。
 
-示例见 [`Caddyfile.example`](../Caddyfile.example)。替换域名、用户名和 `caddy hash-password` 生成的密码哈希；公开域名的 root 只指向宿主机状态根目录下的 `data/`。配置、日志、备份和临时文件均放在公开目录之外；不要通过服务器手动向公开目录放入符号链接，因为 Caddy 的文件根目录本身不是符号链接沙箱。
+示例见 [`Caddyfile.example`](../Caddyfile.example)。替换域名、用户名和 `caddy hash-password` 生成的密码哈希；仅代理明确列出的公开路由，其余路由均要求认证。配置、日志、备份和临时文件均放在公开目录之外；不要通过服务器手动向公开目录放入符号链接。
 
-Caddy 认证、双域名 HTTPS、匿名公开浏览下载和管理应用停止后的下载能力，已由部署者于 2026-09-13 确认手动验证。示例配置及其替换说明参考 [Caddy file_server 文档](https://caddyserver.com/docs/caddyfile/directives/file_server)。
+历史双域名和 Caddy 直接文件服务部署曾于 2026-09-13 由部署者确认验证；当前单域名代理配置尚需部署验证。

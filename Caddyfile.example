@@ -1,25 +1,18 @@
-# Replace both domains, the username, and the password hash before use.
+# Replace the domain, username, and password hash before use.
 # Generate the hash with: caddy hash-password
-# Runtime USER_URL must match admin.example.com (docker run --env USER_URL=...).
-admin.example.com {
-	basic_auth {
-		admin REPLACE_WITH_CADDY_PASSWORD_HASH
-	}
-	reverse_proxy 127.0.0.1:8123
-}
-
-files.example.com {
-	# Public page, Framework loader requests, downloads and built page assets only.
+# Runtime USER_URL must match sharebox.example.com.
+sharebox.example.com {
+	# Public page, Framework loader requests, downloads and page assets.
 	@public_app path /public /public/* /public.data /assets/* /__manifest /favicon.ico /favicon.svg
 	handle @public_app {
 		reverse_proxy 127.0.0.1:8123
 	}
+
+	# Authenticate all remaining routes, including the management loader and uploads.
 	handle {
-		# Keep existing direct file links available while the application is stopped.
-		# Only expose data/, never the state root or tmp/.
-		root * /var/lib/sharebox/data
-		file_server browse {
-			index ""
+		basic_auth {
+			admin REPLACE_WITH_CADDY_PASSWORD_HASH
 		}
+		reverse_proxy 127.0.0.1:8123
 	}
 }

@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createReadableStreamFromReadable } from "@react-router/node";
+import { publicDownloadUrl } from "~/utils/public-links";
 import { logger } from "./logger.server";
 import { checkRootDirectory } from "./utils.server";
 
@@ -64,7 +65,7 @@ export async function readPublicDirectory(root: string, relativePath: string) {
 					size: entryStats.size,
 					modifiedAt: entryStats.mtime.toISOString(),
 					downloadUrl: entryStats.isFile()
-						? `/public/download?${new URLSearchParams({ path: entryPath })}`
+						? publicDownloadUrl(entryPath)
 						: null,
 				});
 			} catch (error) {

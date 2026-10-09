@@ -572,9 +572,3 @@ it("uses the same strict expiration boundary for completion and cleanup", async 
 afterAll(async () => {
 	await rm(initialState, { recursive: true, force: true });
 });
-
-// Runtime configuration tests must not load the developer's private .env.
-vi.mock("node:process", async (importOriginal) => ({
-	...(await importOriginal<typeof import("node:process")>()),
-	loadEnvFile: vi.fn(),
-}));

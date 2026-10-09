@@ -17,6 +17,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 let root: string;
 beforeEach(async () => {
 	vi.resetModules();
+	vi.clearAllMocks();
 	root = await mkdtemp(path.join(os.tmpdir(), "sharebox-config-"));
 	vi.stubEnv("STATE_DIR", path.join(root, "state"));
 	vi.stubEnv("PROD", false);
@@ -142,11 +143,15 @@ it.each(["data", "tmp"])(
 );
 
 it.each(["DATA_DIR", "UPLOAD_TMP_DIR"])(
-	"rejects obsolete %s configuration with migration guidance",
+	"ignores obsolete %s configuration",
 	async (name) => {
 		vi.stubEnv(name, root);
-		await expect(import("../server/config.server")).rejects.toThrow(
-			"set STATE_DIR",
+		const { CONFIG } = await import("../server/config.server");
+		expect(CONFIG.datadir).toBe(
+			path.join(await realpath(path.join(root, "state")), "data"),
+		);
+		expect(CONFIG.tempdir).toBe(
+			path.join(await realpath(path.join(root, "state")), "tmp"),
 		);
 	},
 );
@@ -161,7 +166,7 @@ it("validates the upload limit before creating storage", async () => {
 	});
 });
 
-// Runtime configuration tests must not load the developer's private .env.
+// Track calls so automatic .env loading cannot be reintroduced.
 vi.mock("node:process", async (importOriginal) => ({
 	...(await importOriginal<typeof import("node:process")>()),
 	loadEnvFile: vi.fn(),
@@ -228,4 +233,11 @@ it.each([
 it("keeps local development origin checks tied to the request URL", async () => {
 	vi.stubEnv("USER_URL", "admin.example.com");
 	expect((await import("../server/config.server")).CONFIG.adminHost).toBe("");
+});
+
+it("does not load .env files when initializing configuration or logging", async () => {
+	const { loadEnvFile } = await import("node:process");
+	await import("../server/config.server");
+	await import("../server/logger.server");
+	expect(loadEnvFile).not.toHaveBeenCalled();
 });

@@ -1,6 +1,4 @@
-import DownloadOutlined from "@mui/icons-material/DownloadOutlined";
 import FolderOutlined from "@mui/icons-material/FolderOutlined";
-import InsertDriveFileOutlined from "@mui/icons-material/InsertDriveFileOutlined";
 import Refresh from "@mui/icons-material/Refresh";
 import Search from "@mui/icons-material/Search";
 import {
@@ -23,8 +21,8 @@ import {
 	useRevalidator,
 } from "react-router";
 import type { PublicEntry } from "~/server/public-files.server";
-import { formatSize } from "~/utils/file-format";
 import { publicPageUrl } from "~/utils/public-links";
+import PublicEntryItem from "./PublicEntryItem";
 
 export default function PublicBrowser({
 	path,
@@ -143,61 +141,7 @@ export default function PublicBrowser({
 					</Box>
 				)}
 				{visible.map((entry) => (
-					<Stack
-						key={entry.path}
-						direction="row"
-						spacing={2}
-						sx={{
-							alignItems: "center",
-							px: { xs: 2, sm: 3 },
-							py: 2,
-							borderTop: 1,
-							borderColor: "divider",
-							"&:hover": { bgcolor: "#f8faf8" },
-						}}
-					>
-						{entry.type === "directory" ? (
-							<FolderOutlined color="primary" />
-						) : (
-							<InsertDriveFileOutlined sx={{ color: "text.secondary" }} />
-						)}
-						<Box sx={{ flex: 1, minWidth: 0 }}>
-							{entry.type === "directory" ? (
-								<Link
-									component={RouterLink}
-									to={publicPageUrl(entry.path)}
-									underline="hover"
-									sx={{ fontWeight: 600, overflowWrap: "anywhere" }}
-								>
-									{entry.name}
-								</Link>
-							) : (
-								<Typography sx={{ fontWeight: 500, overflowWrap: "anywhere" }}>
-									{entry.name}
-								</Typography>
-							)}
-							<Typography
-								variant="body2"
-								color="text.secondary"
-								sx={{ mt: 0.5 }}
-							>
-								{entry.type === "directory" ? "文件夹" : formatSize(entry.size)}{" "}
-								· {entry.modifiedAt.slice(0, 16).replace("T", " ")} UTC
-							</Typography>
-						</Box>
-						{entry.downloadUrl && (
-							<Button
-								component="a"
-								href={entry.downloadUrl}
-								download={entry.name}
-								startIcon={<DownloadOutlined />}
-								aria-label={`下载 ${entry.name}`}
-								size="small"
-							>
-								下载
-							</Button>
-						)}
-					</Stack>
+					<PublicEntryItem key={entry.path} entry={entry} />
 				))}
 				{!visible.length && (
 					<Stack

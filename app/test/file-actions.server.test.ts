@@ -2,15 +2,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import {
-	afterAll,
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const initialState = await mkdtemp(
 	path.join(os.tmpdir(), "sharebox-test-state-"),
@@ -154,9 +146,3 @@ describe("file actions", () => {
 afterAll(async () => {
 	await rm(initialState, { recursive: true, force: true });
 });
-
-// Runtime configuration tests must not load the developer's private .env.
-vi.mock("node:process", async (importOriginal) => ({
-	...(await importOriginal<typeof import("node:process")>()),
-	loadEnvFile: vi.fn(),
-}));

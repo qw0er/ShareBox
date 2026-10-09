@@ -3,3 +3,7 @@ export function publicPageUrl(relativePath = "") {
 		? `/public?${new URLSearchParams({ path: relativePath })}`
 		: "/public";
 }
+
+export function publicDownloadUrl(relativePath: string) {
+	return `/public/download?${new URLSearchParams({ path: relativePath })}`;
+}

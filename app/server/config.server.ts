@@ -1,25 +1,6 @@
-import { loadEnvFile } from "node:process";
 import { userDataDir } from "platformdirs";
 import { LOGGER_LEVEL, logger } from "./logger.server";
 import { initializeStorage } from "./storage.server";
-
-try {
-	loadEnvFile();
-} catch {
-	logger.info("No .env file found, using environment variables");
-}
-
-if (
-	process.env.DATA_DIR !== undefined ||
-	process.env.UPLOAD_TMP_DIR !== undefined
-) {
-	logger.error(
-		"Obsolete storage configuration; replace DATA_DIR and UPLOAD_TMP_DIR with STATE_DIR",
-	);
-	throw new Error(
-		"DATA_DIR and UPLOAD_TMP_DIR are no longer supported; set STATE_DIR to the parent of data/ and tmp/ instead",
-	);
-}
 
 const maxUploadBytes = getUploadLimit();
 const adminHost = getAdminHost();
