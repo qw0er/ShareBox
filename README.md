@@ -29,6 +29,8 @@ ShareBox 是部署在个人服务器上的轻量文件管理与分享工具，�
 
 ## 部署方法
 
+预构建镜像仅提供 `linux/amd64`（x86_64）版本。
+
 选择 Docker Compose 或 rootless Podman Quadlet 中的一种。两种方式均使用命名 volume 保存整个状态目录，不需要绑定宿主机数据路径。
 
 容器监听 `8123`，仅发布到宿主机 `127.0.0.1:8123`。在宿主机安装 Caddy，配置域名 DNS 指向服务器，并开放 HTTP/HTTPS 端口。镜像以 UID/GID `1000:1000` 运行。
