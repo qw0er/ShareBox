@@ -16,7 +16,16 @@ export const CONFIG = {
 	adminHost,
 };
 
-logger.info({ dataDir: CONFIG.datadir, adminHost }, "Configuration loaded");
+logger.info(
+	{
+		component: "config",
+		dataDir: CONFIG.datadir,
+		adminHost,
+		maxUploadBytes,
+		loggerLevel: LOGGER_LEVEL,
+	},
+	"Configuration loaded",
+);
 
 function getAdminHost(): string {
 	if (!import.meta.env.PROD) return "";
@@ -29,7 +38,10 @@ function getAdminHost(): string {
 		if (!url.hostname || url.port === "0") throw new Error("Invalid host");
 		return url.host;
 	} catch (err) {
-		logger.error({ err }, "Invalid runtime USER_URL configuration");
+		logger.fatal(
+			{ component: "config", err },
+			"Invalid runtime USER_URL configuration",
+		);
 		throw new Error(
 			"USER_URL is required in production and must be a host without a protocol or path (for example admin.example.com)",
 		);
@@ -45,6 +57,10 @@ function getUploadLimit(): number {
 		limit <= 0 ||
 		limit > Number.MAX_SAFE_INTEGER - 65536
 	) {
+		logger.fatal(
+			{ component: "config" },
+			"MAX_UPLOAD_BYTES must be a positive safe integer",
+		);
 		throw new Error("MAX_UPLOAD_BYTES must be a positive safe integer");
 	}
 	return limit;

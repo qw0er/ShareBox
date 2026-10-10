@@ -266,3 +266,18 @@ it("does not retry a tus error wrapping an expired-session response", async () =
 		expect(queue.tasks[0].error).toBe("登录已过期，请重新登录后继续上传。");
 	}
 });
+
+it.each([401, 403, 409, 410, 413, 423, 429, 500, 0])(
+	"shows a readable upload error for HTTP %i without transport internals",
+	async (status) => {
+		await queue.start(queue.tasks[0].id, 100);
+		clients[0].options.onError(
+			Object.assign(new Error("tus: private server path /data/internal"), {
+				originalResponse: { getStatus: () => status },
+			}),
+		);
+		expect(queue.tasks[0].error).toBeTruthy();
+		expect(queue.tasks[0].error).not.toContain("tus:");
+		expect(queue.tasks[0].error).not.toContain("/data/internal");
+	},
+);

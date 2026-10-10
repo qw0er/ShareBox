@@ -4,8 +4,15 @@ import { hashPassword } from "../server/password.server";
 vi.mock("../server/config.server", () => ({
 	CONFIG: { adminHost: "", datadir: "/unused", maxUploadBytes: 100 },
 }));
-vi.mock("../server/logger.server", () => ({
-	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+vi.mock("../server/logger.server", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../server/logger.server")>()),
+	logger: {
+		debug: vi.fn(),
+		fatal: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+	},
 }));
 vi.mock("../server/read-files.server", () => ({
 	getFileTree: vi.fn(async () => []),
@@ -112,11 +119,10 @@ it("exposes the login page anonymously and requires POST for logout", async () =
 			request: new Request("http://localhost/login"),
 		} as Parameters<typeof login.loader>[0]),
 	).resolves.toBeNull();
-	expect(logout.loader).toThrow();
-	try {
-		logout.loader();
-	} catch (response) {
-		expect(response).toMatchObject({ status: 405 });
-	}
+	await expect(
+		logout.loader({
+			request: new Request("http://localhost/logout"),
+		} as Parameters<typeof logout.loader>[0]),
+	).rejects.toMatchObject({ status: 405 });
 	expect(login.headers()).toEqual({ "Cache-Control": "no-store" });
 });

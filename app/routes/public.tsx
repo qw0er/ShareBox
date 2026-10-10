@@ -14,6 +14,7 @@ import { isRouteErrorResponse, Link } from "react-router";
 import ThemeModeButton from "~/components/layout/ThemeModeButton";
 import PublicBrowser from "~/components/public/PublicBrowser";
 import { CONFIG } from "~/server/config.server";
+import { withRequestLogging } from "~/server/logger.server";
 import { readPublicDirectory } from "~/server/public-files.server";
 import type { Route } from "./+types/public";
 
@@ -25,10 +26,12 @@ export function meta() {
 }
 
 export function loader({ request }: Route.LoaderArgs) {
-	return readPublicDirectory(
-		CONFIG.datadir,
-		new URL(request.url).searchParams.get("path") || "",
-	);
+	return withRequestLogging(request, "public", async () => {
+		return readPublicDirectory(
+			CONFIG.datadir,
+			new URL(request.url).searchParams.get("path") || "",
+		);
+	});
 }
 
 function PublicLayout({ children }: { children: React.ReactNode }) {

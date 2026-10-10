@@ -14,12 +14,14 @@ interface GlobalErrorDialogProps {
 	title: string;
 	message: string;
 	actionHref?: string;
+	actionLabel?: string;
 }
 
 export default function GlobalErrorDialog({
 	title,
 	message,
 	actionHref,
+	actionLabel = "返回首页",
 }: GlobalErrorDialogProps) {
 	return (
 		<>
@@ -64,7 +66,7 @@ export default function GlobalErrorDialog({
 				<DialogActions sx={{ px: 3, pb: 2.5 }}>
 					{actionHref ? (
 						<Button variant="contained" href={actionHref}>
-							返回首页
+							{actionLabel}
 						</Button>
 					) : (
 						<Button

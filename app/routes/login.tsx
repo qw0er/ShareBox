@@ -12,18 +12,23 @@ import {
 import { Form, Link, redirect, useNavigation } from "react-router";
 import ThemeModeButton from "~/components/layout/ThemeModeButton";
 import { getAuth } from "~/server/auth.server";
+import { withRequestLogging } from "~/server/logger.server";
 import type { Route } from "./+types/login";
 
 export function meta() {
 	return [{ title: "管理员登录 · ShareBox" }];
 }
 export async function loader({ request }: Route.LoaderArgs) {
-	if (await getAuth().isAuthenticated(request))
-		throw redirect("/", { headers: { "Cache-Control": "no-store" } });
-	return null;
+	return withRequestLogging(request, "login", async () => {
+		if (await getAuth().isAuthenticated(request))
+			throw redirect("/", { headers: { "Cache-Control": "no-store" } });
+		return null;
+	});
 }
 export function action({ request }: Route.ActionArgs) {
-	return getAuth().login(request);
+	return withRequestLogging(request, "login", async () => {
+		return getAuth().login(request);
+	});
 }
 export function headers() {
 	return { "Cache-Control": "no-store" };

@@ -15,8 +15,9 @@ import {
 } from "../server/password.server";
 
 vi.mock("../server/config.server", () => ({ CONFIG: { adminHost: "" } }));
-vi.mock("../server/logger.server", () => ({
-	logger: { info: vi.fn(), warn: vi.fn() },
+vi.mock("../server/logger.server", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../server/logger.server")>()),
+	logger: { debug: vi.fn(), fatal: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
 vi.stubEnv("ADMIN_USERNAME", undefined);
 vi.stubEnv("ADMIN_PASSWORD_HASH", undefined);
@@ -246,7 +247,7 @@ it("rejects oversized login bodies before password verification", async () => {
 	const auth = createAuth(settings());
 	const result = await auth.login(loginRequest("x".repeat(17000)));
 	expect(result).toMatchObject({
-		data: { error: "登录表单无效。" },
+		data: { error: "登录表单无效，请刷新页面后重新填写。" },
 		init: { status: 400 },
 	});
 });

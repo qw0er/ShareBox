@@ -21,14 +21,14 @@ export async function handleFileAction(
 	});
 	if (request.method !== "POST") {
 		requestLogger.warn("Rejected non-POST action");
-		return { error: "Method not allowed" };
+		return { error: "此操作仅支持提交表单，请刷新页面后重试。" };
 	}
 	const expectedOrigin = CONFIG.adminHost
 		? `https://${CONFIG.adminHost}`
 		: new URL(request.url).origin;
 	if (request.headers.get("origin") !== expectedOrigin) {
 		requestLogger.warn("Rejected action origin");
-		return { error: "Invalid request origin" };
+		return { error: "请求来源无效，请从本站页面重新操作。" };
 	}
 	let form: FormData;
 	try {
@@ -36,7 +36,7 @@ export async function handleFileAction(
 	} catch (error) {
 		requestLogger.warn({ err: error }, "Unable to parse file form");
 		return {
-			error: error instanceof Error ? error.message : "Invalid form data",
+			error: "无法读取操作表单，请刷新页面后重试。",
 		};
 	}
 	const intent = form.get("intent");
@@ -45,12 +45,12 @@ export async function handleFileAction(
 			{ intent: typeof intent === "string" ? intent : null },
 			"Invalid file action",
 		);
-		return { error: "Invalid action" };
+		return { error: "不支持此操作，请刷新页面后重试。" };
 	}
 
 	return actionHandlers[intent]({ form, requestLogger });
 }
 
 function isFileActionIntent(intent: unknown): intent is FileActionIntent {
-	return typeof intent === "string" && intent in actionHandlers;
+	return typeof intent === "string" && Object.hasOwn(actionHandlers, intent);
 }

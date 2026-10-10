@@ -3,9 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../server/logger.server", () => ({
-	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+vi.mock("../server/logger.server", () => {
+	const logger = {
+		debug: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		child: vi.fn(),
+	};
+	logger.child.mockReturnValue(logger);
+	return { logger };
+});
 
 import {
 	downloadPublicFile,
@@ -163,4 +171,25 @@ describe("public download", () => {
 			status: 400,
 		});
 	});
+});
+
+it("logs a finished download only after the stream has been read", async () => {
+	const { logger } = await import("../server/logger.server");
+	vi.mocked(logger.info).mockClear();
+	const response = await downloadPublicFile(root, request());
+	expect(logger.info).toHaveBeenCalledWith("Download stream started");
+	expect(logger.info).not.toHaveBeenCalledWith(
+		expect.anything(),
+		"Download stream finished",
+	);
+	expect(await response.text()).toBe("0123456789");
+	await vi.waitFor(() =>
+		expect(logger.info).toHaveBeenCalledWith(
+			expect.objectContaining({
+				bytesRead: 10,
+				durationMs: expect.any(Number),
+			}),
+			"Download stream finished",
+		),
+	);
 });

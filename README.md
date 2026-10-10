@@ -232,7 +232,7 @@ Compose 在 `environment` 下配置，Quadlet 使用 `[Container]` 下的 `Envir
 | `USER_URL` | 生产环境必填，站点主机名，可包含端口，不含协议或路径 |
 | `STATE_DIR` | 状态根目录；镜像默认 `/var/lib/sharebox`，与 volume 挂载目标一致 |
 | `MAX_UPLOAD_BYTES` | 单文件大小上限，默认 `10737418240`（10 GiB），必须为正安全整数 |
-| `LOGGER_LEVEL` | 日志级别，默认 `info` |
+| `LOGGER_LEVEL` | 日志阈值，默认 `info`；支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`、`silent` |
 | `ADMIN_USERNAME` | 管理员用户名 |
 | `ADMIN_PASSWORD_HASH` | `npm run auth:hash` 生成的带盐 scrypt 哈希 |
 | `SESSION_SECRET` | 随机签名密钥，至少 32 字节；跨重启保持一致 |
@@ -289,3 +289,16 @@ podman build -f packages/Dockerfile -t localhost/sharebox:local .
 ```
 
 构建后，将 Compose 的 `image` 改为 `sharebox:local`，或将 Quadlet 的 `Image` 改为 `localhost/sharebox:local`。rootless Podman 镜像应由运行服务的独立用户构建或导入。
+
+### 日志排查
+
+日志写入标准输出；生产环境保留 Pino JSON，开发环境由 `pino-pretty` 美化。用 `LOGGER_LEVEL=debug npm run dev` 查看流程细节，`trace` 还会记录上传锁等待，排查后建议恢复 `info`。
+
+- `info`：配置与存储初始化、路由操作结果、登录登出、重命名和删除、上传发布与过期清理、下载流开始与结束。
+- `warn`：认证失败、无效输入、资源不存在、上传冲突等预期的请求拒绝。
+- `error`：存储权限、读写故障、上传发布或清理失败等需要排查的异常；`fatal` 表示阻止启动的配置错误。
+- `debug` / `trace`：请求开始、上传偏移与完成凭据恢复、清理扫描、下载取消、上传锁等详细过程。
+
+应用路由的日志包含 `requestId`、`method`、`path`，结果日志包含 `status` 和 `durationMs`；按 `requestId` 关联同一次路由调用的日志，按 `uploadId` 追踪跨请求上传。路由结果表示数据或响应已准备好，下载流结束表示服务端已读完文件，不代表客户端已保存。未登录页面跳转按正常重定向记录；主动取消的下载按 `debug` 记录。
+
+不记录请求正文、查询字符串或密码，常见 Cookie、Authorization 和密钥字段会脱敏。详细错误留在服务端日志，界面展示中文原因和可执行的恢复步骤。

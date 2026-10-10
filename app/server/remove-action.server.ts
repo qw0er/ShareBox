@@ -5,19 +5,25 @@ import type {
 	FileActionResult,
 } from "./action-types.server";
 import { CONFIG } from "./config.server";
+import { fileOperationLevel, fileOperationMessage } from "./file-errors.server";
 import { checkRootDirectory } from "./utils.server";
 
 export async function handleRemoveAction({
 	form,
 	requestLogger,
 }: FileActionContext): Promise<FileActionResult> {
-	if ([...form.values()].some((value) => typeof value !== "string"))
-		return { error: "Invalid form data" };
+	if ([...form.values()].some((value) => typeof value !== "string")) {
+		requestLogger.warn(
+			{ operation: "remove" },
+			"Rejected non-text removal form",
+		);
+		return { error: "操作表单无效，请刷新页面后重试。" };
+	}
 
 	const relativePath = form.get("path");
 	if (typeof relativePath !== "string") {
 		requestLogger.warn({ operation: "remove" }, "Invalid file path");
-		return { error: "Invalid file path" };
+		return { error: "文件路径无效，请刷新列表后重试。" };
 	}
 
 	try {
@@ -28,43 +34,37 @@ export async function handleRemoveAction({
 		);
 		return { success: true };
 	} catch (error) {
-		const code = getErrorCode(error);
-		const logContext = {
-			err: error,
-			operation: "remove",
-			relativePath,
-			code,
-		};
-
-		if (code === "ENOENT") {
-			requestLogger.warn(logContext, "File entry no longer exists");
-			return { error: "File or directory no longer exists" };
-		}
-		if (code === "ENOTEMPTY" || code === "EEXIST") {
-			requestLogger.warn(logContext, "Directory is not empty");
-			return { error: "Directory is not empty" };
-		}
-		if (code === "EACCES" || code === "EPERM") {
-			requestLogger.error(logContext, "Permission denied while removing entry");
-			return { error: "Permission denied" };
-		}
-		requestLogger.error(logContext, "Unable to remove file entry");
-		return {
-			error: error instanceof Error ? error.message : "Unable to remove entry",
-		};
+		requestLogger[fileOperationLevel(error)](
+			{ err: error, operation: "remove", relativePath },
+			"Unable to remove file entry",
+		);
+		return { error: fileOperationMessage(error, "删除") };
 	}
-}
-
-function getErrorCode(error: unknown): NodeJS.ErrnoException["code"] {
-	return error instanceof Error && "code" in error
-		? (error as NodeJS.ErrnoException).code
-		: undefined;
 }
 
 export async function removeFileEntry(
 	rootDir: string,
 	relativePath: string,
 ): Promise<void> {
+	const { targetPath, targetStats } = await resolveFileEntry(
+		rootDir,
+		relativePath,
+	);
+
+	if (targetStats?.isFile()) {
+		await fs.unlink(targetPath);
+		return;
+	}
+
+	if (targetStats?.isDirectory()) {
+		await fs.rmdir(targetPath);
+		return;
+	}
+
+	throw new Error("Unsupported file type");
+}
+
+export async function resolveFileEntry(rootDir: string, relativePath: string) {
 	if (
 		!relativePath ||
 		path.isAbsolute(relativePath) ||
@@ -98,15 +98,5 @@ export async function removeFileEntry(
 		}
 	}
 
-	if (targetStats?.isFile()) {
-		await fs.unlink(targetPath);
-		return;
-	}
-
-	if (targetStats?.isDirectory()) {
-		await fs.rmdir(targetPath);
-		return;
-	}
-
-	throw new Error("Unsupported file type");
+	return { targetPath, targetStats };
 }

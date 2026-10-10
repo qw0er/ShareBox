@@ -97,14 +97,14 @@ async function publicOperation<T>(
 	const startedAt = Date.now();
 	try {
 		const result = await run();
-		logger.info(
+		logger.debug(
 			{
 				component: "public-files",
 				operation,
 				relativePath,
 				durationMs: Date.now() - startedAt,
 			},
-			"Public file request served",
+			"Public file response prepared",
 		);
 		return result;
 	} catch (error) {
@@ -124,6 +124,7 @@ async function publicOperation<T>(
 				operation,
 				relativePath,
 				status: response.status,
+				durationMs: Date.now() - startedAt,
 				err: error instanceof Response ? undefined : error,
 			},
 			"Public file request failed",
@@ -219,12 +220,46 @@ export async function downloadPublicFile(root: string, request: Request) {
 				autoClose: true,
 				signal: request.signal,
 			});
-			stream.on("error", (err) =>
-				logger.error(
-					{ err, component: "public-files", relativePath },
+			const downloadLogger = logger.child({
+				component: "public-files",
+				operation: "download",
+				relativePath,
+				method: request.method,
+				status: range ? 206 : 200,
+				expectedBytes: range ? range.end - range.start + 1 : current.size,
+			});
+			const startedAt = performance.now();
+			let ended = false;
+			let failed = false;
+			downloadLogger.info("Download stream started");
+			stream.once("end", () => {
+				ended = true;
+			});
+			stream.once("error", (err) => {
+				failed = true;
+				downloadLogger[
+					request.signal.aborted || err.name === "AbortError"
+						? "debug"
+						: "error"
+				](
+					{
+						err,
+						bytesRead: stream.bytesRead,
+						durationMs: Math.round(performance.now() - startedAt),
+					},
 					"Download stream interrupted",
-				),
-			);
+				);
+			});
+			stream.once("close", () => {
+				if (!failed)
+					downloadLogger[ended ? "info" : "debug"](
+						{
+							bytesRead: stream.bytesRead,
+							durationMs: Math.round(performance.now() - startedAt),
+						},
+						ended ? "Download stream finished" : "Download stream cancelled",
+					);
+			});
 			return new Response(createReadableStreamFromReadable(stream), {
 				status: range ? 206 : 200,
 				headers,

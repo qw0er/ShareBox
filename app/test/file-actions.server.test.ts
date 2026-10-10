@@ -1,4 +1,12 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	stat,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -67,7 +75,7 @@ describe("file actions", () => {
 		form.set("file", new File(["content"], "remove.txt"));
 
 		await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
-			error: "Invalid form data",
+			error: "操作表单无效，请刷新页面后重试。",
 		});
 	});
 
@@ -77,7 +85,7 @@ describe("file actions", () => {
 		form.set("path", "missing.txt");
 
 		await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
-			error: "File or directory no longer exists",
+			error: "文件或文件夹已不存在，请刷新列表。",
 		});
 	});
 
@@ -92,7 +100,7 @@ describe("file actions", () => {
 		form.set("path", "not-empty");
 
 		await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
-			error: "Directory is not empty",
+			error: "文件夹不为空，请先删除其中的内容。",
 		});
 	});
 
@@ -106,7 +114,76 @@ describe("file actions", () => {
 			await expect(
 				handleFileAction(await actionRequest(form)),
 			).resolves.toEqual({
-				error: "Invalid file path",
+				error: "文件路径无效，请刷新列表后重试。",
+			});
+		},
+	);
+
+	it("renames a file and preserves its contents", async () => {
+		await writeFile(path.join(CONFIG.datadir, "old.txt"), "contents");
+		const form = new FormData();
+		form.set("intent", "rename");
+		form.set("path", "old.txt");
+		form.set("newName", "new.txt");
+		expect(await handleFileAction(await actionRequest(form))).toEqual({
+			success: true,
+		});
+		expect(await readFile(path.join(CONFIG.datadir, "new.txt"), "utf8")).toBe(
+			"contents",
+		);
+	});
+	it.each(["", "../outside.txt", "folder/new.txt", ".."])(
+		"rejects unsafe rename name %j",
+		async (newName) => {
+			await writeFile(path.join(CONFIG.datadir, "old.txt"), "contents");
+			const form = new FormData();
+			form.set("intent", "rename");
+			form.set("path", "old.txt");
+			form.set("newName", newName);
+			expect(await handleFileAction(await actionRequest(form))).toEqual({
+				error: "文件名无效，请输入有效的新名称。",
+			});
+			expect(await readFile(path.join(CONFIG.datadir, "old.txt"), "utf8")).toBe(
+				"contents",
+			);
+		},
+	);
+	it("rejects a rename outside the data tree or through a symbolic link", async () => {
+		await writeFile(path.join(rootDir, "outside.txt"), "contents");
+		await symlink(rootDir, path.join(CONFIG.datadir, "link"));
+		for (const target of ["../outside.txt", "link/outside.txt"]) {
+			const form = new FormData();
+			form.set("intent", "rename");
+			form.set("path", target);
+			form.set("newName", "new.txt");
+			expect(
+				(await handleFileAction(await actionRequest(form))).error,
+			).toBeDefined();
+		}
+		expect(await readFile(path.join(rootDir, "outside.txt"), "utf8")).toBe(
+			"contents",
+		);
+	});
+	it("does not expose parser errors to the user", async () => {
+		const request = new Request("http://localhost/", {
+			method: "POST",
+			headers: {
+				origin: "http://localhost",
+				"Content-Type": "multipart/form-data",
+			},
+			body: "broken",
+		});
+		expect(await handleFileAction(request)).toEqual({
+			error: "无法读取操作表单，请刷新页面后重试。",
+		});
+	});
+	it.each(["constructor", "__proto__"])(
+		"rejects inherited action name %s",
+		async (intent) => {
+			const form = new FormData();
+			form.set("intent", intent);
+			expect(await handleFileAction(await actionRequest(form))).toEqual({
+				error: "不支持此操作，请刷新页面后重试。",
 			});
 		},
 	);
@@ -116,7 +193,7 @@ describe("file actions", () => {
 		form.set("intent", "upload");
 
 		await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
-			error: "Invalid action",
+			error: "不支持此操作，请刷新页面后重试。",
 		});
 	});
 
@@ -125,7 +202,7 @@ describe("file actions", () => {
 		async (method) => {
 			const request = new Request("http://localhost/", { method });
 			expect(await handleFileAction(request)).toEqual({
-				error: "Method not allowed",
+				error: "此操作仅支持提交表单，请刷新页面后重试。",
 			});
 		},
 	);
@@ -138,7 +215,7 @@ describe("file actions", () => {
 		request.headers.set("origin", "https://evil.example");
 
 		await expect(handleFileAction(request)).resolves.toEqual({
-			error: "Invalid request origin",
+			error: "请求来源无效，请从本站页面重新操作。",
 		});
 	});
 });

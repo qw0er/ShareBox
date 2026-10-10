@@ -30,7 +30,10 @@ export default function DeleteFileButton({ node }: { node: FileNode }) {
 				<IconButton
 					size="small"
 					aria-label={`删除 ${node.name}`}
-					onClick={() => setConfirm(true)}
+					onClick={() => {
+						fetcher.reset();
+						setConfirm(true);
+					}}
 					disabled={busy}
 					sx={{
 						color: "text.secondary",

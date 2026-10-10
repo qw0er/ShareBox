@@ -1,4 +1,4 @@
-import { Upload } from "tus-js-client";
+import { type DetailedError, Upload } from "tus-js-client";
 import {
 	activeCount,
 	addFiles,
@@ -38,9 +38,35 @@ class SessionExpiredError extends Error {
 function isSessionExpired(error: Error) {
 	return (
 		error instanceof SessionExpiredError ||
+		error.message === SESSION_EXPIRED_MESSAGE ||
 		("causingError" in error &&
 			error.causingError instanceof SessionExpiredError)
 	);
+}
+function uploadFailureMessage(error: Error) {
+	if (isSessionExpired(error)) return SESSION_EXPIRED_MESSAGE;
+	const status = (error as DetailedError).originalResponse?.getStatus();
+	switch (status) {
+		case 401:
+			return SESSION_EXPIRED_MESSAGE;
+		case 403:
+			return "上传请求被拒绝，请刷新页面并重新登录后重试。";
+		case 404:
+		case 410:
+			return "上传任务已失效，请移除任务后重新选择文件。";
+		case 409:
+			return "上传发生冲突，请检查是否有同名文件，再重试。";
+		case 413:
+			return "文件超过服务器大小限制，请选择较小的文件。";
+		case 423:
+			return "上传任务正在被处理，请稍后重试。";
+		case 429:
+			return "上传请求过于频繁，请稍后重试。";
+		default:
+			return status && status >= 500
+				? "服务器暂时无法完成上传，请稍后重试；若仍失败，请联系管理员查看日志。"
+				: "上传中断，请检查网络后重试，已上传的进度会尽量保留。";
+	}
 }
 const STORAGE = "sharebox.uploads.v1";
 const CHUNK_SIZE = 8 * 1024 * 1024;
@@ -160,7 +186,8 @@ export class UploadQueue {
 					const locationHeader = response.getHeader("Location");
 					if (locationHeader) {
 						const url = new URL(locationHeader, location.origin).href;
-						if (!validUrl(url)) throw new Error("Invalid upload URL");
+						if (!validUrl(url))
+							throw new Error("上传地址无效，请刷新页面后重试。");
 						this.update(task, { url });
 					}
 				},
@@ -171,9 +198,7 @@ export class UploadQueue {
 					if (this.statusOf(id) === "uploading")
 						this.update(task, {
 							status: "error",
-							error: isSessionExpired(error)
-								? SESSION_EXPIRED_MESSAGE
-								: error.message,
+							error: uploadFailureMessage(error),
 						});
 				},
 				onSuccess: () => {
@@ -204,8 +229,11 @@ export class UploadQueue {
 		try {
 			await this.uploads.get(id)?.abort();
 			this.update(task, { status: "paused" });
-		} catch (error) {
-			this.update(task, { status: "error", error: (error as Error).message });
+		} catch {
+			this.update(task, {
+				status: "error",
+				error: "暂停上传失败，请检查网络后重试。",
+			});
 		}
 	}
 	async remove(id: string) {
@@ -219,13 +247,12 @@ export class UploadQueue {
 			await upload?.abort();
 			const url = task.url || upload?.url;
 			if (url && !complete) {
-				if (!validUrl(url)) throw new Error("Invalid upload URL");
+				if (!validUrl(url)) throw new Error("上传地址无效，请刷新页面后重试。");
 				const response = await fetch(url, {
 					method: "DELETE",
 					headers: { "Tus-Resumable": "1.0.0" },
 				});
-				if (response.status === 401)
-					throw new Error("登录已过期，请重新登录后重试。");
+				if (response.status === 401) throw new SessionExpiredError();
 				if (!response.ok && response.status !== 404 && response.status !== 410)
 					throw new Error("删除上传失败，请重试。");
 			}
@@ -233,7 +260,13 @@ export class UploadQueue {
 			this.tasks = removeTask(this.tasks, id);
 			this.emit();
 		} catch (error) {
-			this.update(task, { status: "error", error: (error as Error).message });
+			this.update(task, {
+				status: "error",
+				error:
+					error instanceof Error && isSessionExpired(error)
+						? SESSION_EXPIRED_MESSAGE
+						: "移除上传任务失败，请检查网络后重试。",
+			});
 		}
 	}
 	dispose() {

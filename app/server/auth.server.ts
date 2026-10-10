@@ -6,7 +6,29 @@ import { logger } from "./logger.server";
 import { readLoginForm } from "./login-form.server";
 import { verifyPassword } from "./password.server";
 
-const config = readAuthConfig(process.env, import.meta.env.PROD);
+const config = loadAuthConfig();
+function loadAuthConfig() {
+	try {
+		const settings = readAuthConfig(process.env, import.meta.env.PROD);
+		logger[settings ? "info" : "warn"](
+			{
+				component: "auth",
+				configured: !!settings,
+				secureCookie: settings?.secure,
+			},
+			settings
+				? "Authentication configured"
+				: "Authentication configuration missing",
+		);
+		return settings;
+	} catch (err) {
+		logger.fatal(
+			{ component: "auth", err },
+			"Authentication configuration invalid",
+		);
+		throw err;
+	}
+}
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const WINDOW_MS = 15 * 60 * 1000;
 
@@ -44,13 +66,13 @@ export function createAuth(settings: NonNullable<typeof config>) {
 	}
 	async function requireAdmin(request: Request, redirectToLogin = false) {
 		if (await isAuthenticated(request)) return;
-		logger.warn(
+		logger[redirectToLogin ? "debug" : "warn"](
 			{ component: "auth", method: request.method },
 			"Rejected unauthenticated management request",
 		);
 		if (redirectToLogin)
 			throw redirect("/login", { headers: { "Cache-Control": "no-store" } });
-		throw new Response("Authentication required", {
+		throw new Response("登录已过期或尚未登录，请重新登录后重试。", {
 			status: 401,
 			headers: { "Cache-Control": "no-store", "Tus-Resumable": "1.0.0" },
 		});
@@ -63,7 +85,16 @@ export function createAuth(settings: NonNullable<typeof config>) {
 			attempts = 0;
 		}
 		if (attempts >= 10) {
-			logger.warn({ component: "auth" }, "Login rate limit reached");
+			logger.warn(
+				{
+					component: "auth",
+					attempts,
+					retryAfterSeconds: Math.ceil(
+						(WINDOW_MS - (now - windowStart)) / 1000,
+					),
+				},
+				"Login rate limit reached",
+			);
 			return data(
 				{ error: "登录尝试过于频繁，请稍后重试。" },
 				{
@@ -84,7 +115,7 @@ export function createAuth(settings: NonNullable<typeof config>) {
 		} catch {
 			logger.warn({ component: "auth" }, "Rejected invalid login form");
 			return data(
-				{ error: "登录表单无效。" },
+				{ error: "登录表单无效，请刷新页面后重新填写。" },
 				{ status: 400, headers: { "Cache-Control": "no-store" } },
 			);
 		}
@@ -94,7 +125,10 @@ export function createAuth(settings: NonNullable<typeof config>) {
 			typeof password === "string" &&
 			(await verifyPassword(password, settings.passwordHash));
 		if (username !== settings.username || !validPassword) {
-			logger.warn({ component: "auth" }, "Administrator login failed");
+			logger.warn(
+				{ component: "auth", attempts, reason: "invalid_credentials" },
+				"Administrator login failed",
+			);
 			return data(
 				{ error: "用户名或密码错误。" },
 				{ status: 400, headers: { "Cache-Control": "no-store" } },
@@ -138,7 +172,9 @@ export function assertAuthOrigin(request: Request) {
 			{ component: "auth", method: request.method },
 			"Rejected authentication request origin or method",
 		);
-		throw new Response("Invalid request origin or method", { status: 403 });
+		throw new Response("请求来源或提交方式无效，请从本站登录页面重新操作。", {
+			status: 403,
+		});
 	}
 }
 const configuredAuth = config ? createAuth(config) : undefined;

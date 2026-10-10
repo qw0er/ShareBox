@@ -69,21 +69,28 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 	let title = "发生错误";
 	let message = "处理请求时发生异常，请稍后重试。";
 	let actionHref: string | undefined;
+	let actionLabel: string | undefined;
 
 	if (isRouteErrorResponse(error)) {
 		if (error.status === 404) {
 			title = "页面不存在";
 			message = "找不到你访问的页面，请返回首页继续操作。";
 			actionHref = "/";
+		} else if (error.status === 401) {
+			title = "请重新登录";
+			message = "登录已过期或尚未登录，重新登录后即可继续操作。";
+			actionHref = "/login";
+			actionLabel = "前往登录";
+		} else if (error.status === 503) {
+			title = "服务暂不可用";
+			message = "服务尚未完成配置或暂时不可用，请联系管理员检查配置与日志。";
 		} else if (error.status === 403) {
 			title = "无权访问";
-			message = "你没有权限执行此操作。";
+			message = "请求未通过验证，请刷新页面并重新登录后重试。";
 		} else if (error.status < 500) {
 			title = `请求失败（${error.status}）`;
-			message = error.statusText || "当前请求无法处理，请检查后重试。";
+			message = "当前请求无法处理，请刷新页面后重新操作。";
 		}
-	} else if (import.meta.env.DEV && error instanceof Error) {
-		message = error.message;
 	}
 
 	return (
@@ -91,6 +98,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 			title={title}
 			message={message}
 			actionHref={actionHref}
+			actionLabel={actionLabel}
 		/>
 	);
 }

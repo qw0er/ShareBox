@@ -545,7 +545,7 @@ it.each([null, "failure", { status_code: 700, body: 123 }])(
 		vi.mocked(copyFile).mockRejectedValueOnce(error);
 		const response = await patch(url, 0, "hello");
 		expect(response.status).toBe(500);
-		expect(await response.text()).toContain("上传未完成");
+		expect(await response.text()).toContain("服务器暂时无法完成上传");
 	},
 );
 
