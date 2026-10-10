@@ -10,6 +10,7 @@ import {
 	Toolbar,
 	Typography,
 } from "@mui/material";
+import ThemeModeButton from "~/components/layout/ThemeModeButton";
 
 export default function WorkspaceLayout({
 	children,
@@ -35,7 +36,7 @@ export default function WorkspaceLayout({
 								display: "grid",
 								placeItems: "center",
 								bgcolor: "primary.main",
-								color: "white",
+								color: "primary.contrastText",
 								width: 38,
 								height: 38,
 								borderRadius: 2,
@@ -58,6 +59,7 @@ export default function WorkspaceLayout({
 							公开页
 						</Button>
 						<Chip label="管理工作区" size="small" variant="outlined" />
+						<ThemeModeButton />
 					</Toolbar>
 				</Container>
 			</AppBar>

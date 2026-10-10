@@ -11,6 +11,7 @@ import {
 	Typography,
 } from "@mui/material";
 import { isRouteErrorResponse, Link } from "react-router";
+import ThemeModeButton from "~/components/layout/ThemeModeButton";
 import PublicBrowser from "~/components/public/PublicBrowser";
 import { CONFIG } from "~/server/config.server";
 import { readPublicDirectory } from "~/server/public-files.server";
@@ -49,6 +50,7 @@ function PublicLayout({ children }: { children: React.ReactNode }) {
 						<Typography variant="h6">ShareBox</Typography>
 						<Box sx={{ flex: 1 }} />
 						<Chip label="公开文件" size="small" variant="outlined" />
+						<ThemeModeButton />
 					</Toolbar>
 				</Container>
 			</AppBar>

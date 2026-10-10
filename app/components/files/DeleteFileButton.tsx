@@ -34,7 +34,7 @@ export default function DeleteFileButton({ node }: { node: FileNode }) {
 					disabled={busy}
 					sx={{
 						color: "text.secondary",
-						"&:hover": { color: "error.main", bgcolor: "#fff0ef" },
+						"&:hover": { color: "error.main", bgcolor: "action.hover" },
 					}}
 				>
 					<DeleteOutlined fontSize="small" />

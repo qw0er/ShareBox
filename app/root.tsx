@@ -1,4 +1,8 @@
-import { CssBaseline, ThemeProvider } from "@mui/material";
+import {
+	CssBaseline,
+	InitColorSchemeScript,
+	ThemeProvider,
+} from "@mui/material";
 import {
 	isRouteErrorResponse,
 	Links,
@@ -28,7 +32,7 @@ export const links: Route.LinksFunction = () => [
 
 export function Layout({ children }: { children: React.ReactNode }) {
 	return (
-		<html lang="zh-CN">
+		<html lang="zh-CN" suppressHydrationWarning>
 			<head>
 				<meta charSet="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -36,7 +40,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				<Links />
 			</head>
 			<body>
-				<ThemeProvider theme={theme}>
+				<InitColorSchemeScript
+					attribute="class"
+					defaultMode="system"
+					modeStorageKey="sharebox-theme-mode"
+				/>
+				<ThemeProvider
+					theme={theme}
+					defaultMode="system"
+					modeStorageKey="sharebox-theme-mode"
+					disableTransitionOnChange
+				>
 					<CssBaseline />
 					{children}
 				</ThemeProvider>

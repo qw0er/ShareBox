@@ -56,13 +56,15 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 		.sort((a, b) => {
 			if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
 			if (sort === "size")
-				return (b.size ?? 0) - (a.size ?? 0) || a.name.localeCompare(b.name);
+				return (
+					(b.size ?? 0) - (a.size ?? 0) || a.name.localeCompare(b.name, "zh-CN")
+				);
 			if (sort === "modified")
 				return (
 					(b.modifiedAt ?? "").localeCompare(a.modifiedAt ?? "") ||
-					a.name.localeCompare(b.name)
+					a.name.localeCompare(b.name, "zh-CN")
 				);
-			return a.name.localeCompare(b.name);
+			return a.name.localeCompare(b.name, "zh-CN");
 		});
 	return (
 		<Paper

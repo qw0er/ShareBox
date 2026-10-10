@@ -41,7 +41,7 @@ function ManagedEntry({
 			<ButtonBase
 				component={directory ? "button" : Link}
 				to={directory ? undefined : publicDownloadUrl(node.path)}
-				reloadDocument={!directory}
+				{...(!directory ? { reloadDocument: true } : {})}
 				download={directory ? undefined : node.name}
 				onClick={directory ? () => onNavigate(node.path) : undefined}
 				aria-label={`${directory ? "查看目录" : "下载"} ${node.name}`}

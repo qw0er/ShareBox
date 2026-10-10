@@ -27,9 +27,9 @@ export default function UploadDropzone({
 				}}
 				sx={{
 					border: "1.5px dashed",
-					borderColor: dragging ? "primary.main" : "#bdcdbf",
+					borderColor: dragging ? "primary.main" : "divider",
 					borderRadius: 2,
-					bgcolor: dragging ? "#e3ede4" : "#f7faf7",
+					bgcolor: dragging ? "action.selected" : "action.hover",
 					p: 3,
 					textAlign: "center",
 				}}

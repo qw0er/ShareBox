@@ -10,7 +10,7 @@ export const fileEntryButtonSx = {
 	gap: 2,
 	px: { xs: 2, sm: 3 },
 	py: 2,
-	"&:hover": { bgcolor: "#f8faf8" },
+	"&:hover": { bgcolor: "action.hover" },
 	"&.Mui-focusVisible": {
 		outline: "2px solid",
 		outlineColor: "primary.main",
