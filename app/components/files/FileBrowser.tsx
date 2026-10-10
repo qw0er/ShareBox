@@ -1,77 +1,102 @@
-import FolderOutlined from "@mui/icons-material/FolderOutlined";
-import Refresh from "@mui/icons-material/Refresh";
-import {
-	Box,
-	Button,
-	Chip,
-	Divider,
-	Paper,
-	Stack,
-	Typography,
-} from "@mui/material";
-import { useRevalidator } from "react-router";
+import ChevronRight from "@mui/icons-material/ChevronRight";
+import { Box, ButtonBase, Stack, Typography } from "@mui/material";
+import { useState } from "react";
+import { Link } from "react-router";
 import type { FileNode } from "~/types/files";
-import FileTree from "./FileTree";
+import { formatSize } from "~/utils/file-format";
+import { publicDownloadUrl } from "~/utils/public-links";
+import DeleteFileButton from "./DeleteFileButton";
+import DirectoryBrowser from "./DirectoryBrowser";
+import DownloadLinkButton from "./DownloadLinkButton";
+import { FileEntryContent, fileEntryButtonSx } from "./FileEntryRow";
+import RenameButton from "./RenameButton";
 
-function countFiles(nodes: FileNode[]): number {
-	return nodes.reduce(
-		(count, node) =>
-			count + (node.type === "file" ? 1 : countFiles(node.children)),
-		0,
-	);
+function resolveDirectory(tree: FileNode[], path: string) {
+	let entries = tree;
+	const segments: string[] = [];
+	for (const name of path.split("/").filter(Boolean)) {
+		const directory = entries.find(
+			(node) => node.name === name && node.type === "directory",
+		);
+		if (directory?.type !== "directory") break;
+		segments.push(name);
+		entries = directory.children;
+	}
+	return { path: segments.join("/"), entries };
 }
-export default function FileBrowser({ fileTree }: { fileTree: FileNode[] }) {
-	const revalidator = useRevalidator();
+
+function ManagedEntry({
+	node,
+	onNavigate,
+}: {
+	node: FileNode;
+	onNavigate: (path: string) => void;
+}) {
+	const directory = node.type === "directory";
 	return (
-		<Paper
-			component="section"
-			variant="outlined"
-			aria-labelledby="files-title"
-			sx={{ overflow: "hidden", minHeight: 440 }}
+		<Stack
+			direction={{ xs: "column", sm: "row" }}
+			sx={{ borderTop: 1, borderColor: "divider" }}
 		>
-			<Stack direction="row" spacing={1.5} sx={{ p: 3, alignItems: "center" }}>
-				<Typography id="files-title" variant="h6" component="h2">
-					全部文件
-				</Typography>
-				<Chip
-					size="small"
-					label={`${countFiles(fileTree)} 个文件`}
-					sx={{ bgcolor: "#edf3ed", color: "primary.main" }}
+			<ButtonBase
+				component={directory ? "button" : Link}
+				to={directory ? undefined : publicDownloadUrl(node.path)}
+				reloadDocument={!directory}
+				download={directory ? undefined : node.name}
+				onClick={directory ? () => onNavigate(node.path) : undefined}
+				aria-label={`${directory ? "查看目录" : "下载"} ${node.name}`}
+				sx={{ ...fileEntryButtonSx, flex: 1, minWidth: 0 }}
+			>
+				<FileEntryContent
+					name={node.name}
+					directory={directory}
+					detail={
+						node.type === "directory"
+							? `文件夹 · ${node.children.length} 项`
+							: formatSize(node.size)
+					}
 				/>
-				<Box sx={{ flex: 1 }} />
-				<Button
-					size="small"
-					startIcon={<Refresh />}
-					disabled={revalidator.state !== "idle"}
-					onClick={() => revalidator.revalidate()}
-				>
-					{revalidator.state === "idle" ? "刷新" : "刷新中"}
-				</Button>
-			</Stack>
-			<Divider />
+				{directory && (
+					<Stack
+						direction="row"
+						sx={{ alignItems: "center", color: "primary.main", flexShrink: 0 }}
+					>
+						<Typography variant="body2">查看</Typography>
+						<ChevronRight fontSize="small" />
+					</Stack>
+				)}
+			</ButtonBase>
 			<Stack
 				direction="row"
-				spacing={1}
-				sx={{ px: 3, py: 1.5, bgcolor: "#fafbf9", color: "text.secondary" }}
+				sx={{
+					alignItems: "center",
+					justifyContent: "flex-end",
+					pr: { xs: 2, sm: 3 },
+					pb: { xs: 1, sm: 0 },
+				}}
 			>
-				<FolderOutlined fontSize="small" />
-				<Typography variant="body2">根目录</Typography>
-				<Typography variant="body2" sx={{ ml: "auto !important" }}>
-					大小 / 操作
-				</Typography>
+				{node.type === "file" && <DownloadLinkButton node={node} />}
+				<RenameButton node={node} />
+				<DeleteFileButton node={node} />
 			</Stack>
-			<Divider />
-			{fileTree.length ? (
-				<FileTree nodes={fileTree} />
-			) : (
-				<Stack spacing={1} sx={{ px: 3, py: 8, alignItems: "center" }}>
-					<FolderOutlined sx={{ fontSize: 48, color: "#9aaa9c", mb: 1 }} />
-					<Typography sx={{ fontWeight: 600 }}>这里还没有文件</Typography>
-					<Typography variant="body2" color="text.secondary">
-						上传第一个文件，开始整理你的内容。
-					</Typography>
-				</Stack>
-			)}
-		</Paper>
+		</Stack>
+	);
+}
+
+export default function FileBrowser({ fileTree }: { fileTree: FileNode[] }) {
+	const [requestedPath, setPath] = useState("");
+	const { path, entries } = resolveDirectory(fileTree, requestedPath);
+	return (
+		<Box>
+			<DirectoryBrowser
+				key={path}
+				path={path}
+				entries={entries}
+				onNavigate={setPath}
+				renderEntry={(node) => (
+					<ManagedEntry node={node} onNavigate={setPath} />
+				)}
+			/>
+		</Box>
 	);
 }
