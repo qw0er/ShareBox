@@ -1,6 +1,7 @@
 import FileBrowser from "~/components/files/FileBrowser";
 import WorkspaceLayout from "~/components/layout/WorkspaceLayout";
 import UploadPanel from "~/components/upload/UploadPanel";
+import { getAuth } from "~/server/auth.server";
 import { CONFIG } from "~/server/config.server";
 import { handleFileAction } from "~/server/file-actions.server";
 import { logger } from "~/server/logger.server";
@@ -13,7 +14,8 @@ export function meta() {
 		{ name: "description", content: "ShareBox 文件管理工作区" },
 	];
 }
-export async function loader() {
+export async function loader({ request }: Route.LoaderArgs) {
+	await getAuth().requireAdmin(request, true);
 	const startedAt = Date.now();
 	try {
 		const fileTree = await getFileTree(CONFIG.datadir);
@@ -42,6 +44,7 @@ export async function loader() {
 	}
 }
 export async function action({ request }: Route.ActionArgs) {
+	await getAuth().requireAdmin(request);
 	return handleFileAction(request);
 }
 
@@ -52,4 +55,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 			<UploadPanel maxUploadBytes={loaderData.maxUploadBytes} />
 		</WorkspaceLayout>
 	);
+}
+
+export function headers() {
+	return { "Cache-Control": "no-store" };
 }

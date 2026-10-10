@@ -213,3 +213,56 @@ it("ignores a late success callback after disposal", async () => {
 	expect(onComplete).not.toHaveBeenCalled();
 	expect(queue.tasks[0].status).not.toBe("complete");
 });
+
+it("stops retrying expired authentication and preserves upload state", async () => {
+	await queue.start(queue.tasks[0].id, 100);
+	const options = clients[0].options;
+	expect(
+		options.onShouldRetry({ originalResponse: { getStatus: () => 401 } }),
+	).toBe(false);
+	expect(
+		options.onShouldRetry({ originalResponse: { getStatus: () => 403 } }),
+	).toBe(false);
+	expect(
+		options.onShouldRetry({ originalResponse: { getStatus: () => 500 } }),
+	).toBe(true);
+	options.onAfterResponse(
+		{ getMethod: () => "POST" },
+		{ getStatus: () => 201, getHeader: () => url },
+	);
+	options.onProgress(2, 5);
+	expect(() =>
+		options.onAfterResponse(
+			{ getMethod: () => "HEAD" },
+			{ getStatus: () => 401 },
+		),
+	).toThrow("登录已过期");
+	options.onError(new Error("登录已过期，请重新登录后继续上传。"));
+	expect(queue.tasks[0]).toMatchObject({
+		status: "error",
+		bytes: 2,
+		url,
+		error: "登录已过期，请重新登录后继续上传。",
+	});
+	await queue.start(queue.tasks[0].id, 100);
+	expect(clients).toHaveLength(1);
+});
+
+it("does not retry a tus error wrapping an expired-session response", async () => {
+	await queue.start(queue.tasks[0].id, 100);
+	const options = clients[0].options;
+	try {
+		options.onAfterResponse(
+			{ getMethod: () => "PATCH" },
+			{ getStatus: () => 401 },
+		);
+		throw new Error("Expected session expiry");
+	} catch (error) {
+		const wrapped = Object.assign(new Error("tus failed"), {
+			causingError: error,
+		});
+		expect(options.onShouldRetry(wrapped)).toBe(false);
+		options.onError(wrapped);
+		expect(queue.tasks[0].error).toBe("登录已过期，请重新登录后继续上传。");
+	}
+});

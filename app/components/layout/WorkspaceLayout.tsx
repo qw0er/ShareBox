@@ -1,4 +1,5 @@
 import Inventory2Outlined from "@mui/icons-material/Inventory2Outlined";
+import LogoutOutlined from "@mui/icons-material/LogoutOutlined";
 import OpenInNew from "@mui/icons-material/OpenInNew";
 import {
 	AppBar,
@@ -10,6 +11,7 @@ import {
 	Toolbar,
 	Typography,
 } from "@mui/material";
+import { Form, useNavigation } from "react-router";
 import ThemeModeButton from "~/components/layout/ThemeModeButton";
 
 export default function WorkspaceLayout({
@@ -17,6 +19,7 @@ export default function WorkspaceLayout({
 }: {
 	children: React.ReactNode;
 }) {
+	const busy = useNavigation().state !== "idle";
 	return (
 		<Box sx={{ minHeight: "100vh" }}>
 			<AppBar
@@ -30,7 +33,10 @@ export default function WorkspaceLayout({
 				}}
 			>
 				<Container maxWidth="lg">
-					<Toolbar disableGutters sx={{ gap: 1.5, minHeight: 76 }}>
+					<Toolbar
+						disableGutters
+						sx={{ gap: 1.5, minHeight: 76, flexWrap: "wrap", py: 1 }}
+					>
 						<Box
 							sx={{
 								display: "grid",
@@ -59,6 +65,16 @@ export default function WorkspaceLayout({
 							公开页
 						</Button>
 						<Chip label="管理工作区" size="small" variant="outlined" />
+						<Form method="post" action="/logout">
+							<Button
+								type="submit"
+								size="small"
+								startIcon={<LogoutOutlined />}
+								disabled={busy}
+							>
+								退出登录
+							</Button>
+						</Form>
 						<ThemeModeButton />
 					</Toolbar>
 				</Container>

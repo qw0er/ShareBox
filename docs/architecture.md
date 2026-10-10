@@ -4,11 +4,11 @@
 
 本文只描述 [当前版本需求](requirements.md#2-当前版本) 的实现，不为后续功能预设模块或数据结构。
 
-当前版本由 Caddy、一个 React Router Framework 管理应用和本地文件系统组成。不使用数据库、应用账号、会话、独立 API 服务或任务队列。
+当前版本由 Caddy、一个 React Router Framework 管理应用和本地文件系统组成。管理员凭据通过环境变量配置，会话存入签名 Cookie；不使用数据库、独立 API 服务或任务队列。
 
 ```mermaid
 flowchart LR
-    Admin[管理员浏览器] -->|HTTPS| Auth[Caddy Basic Auth]
+    Admin[管理员浏览器] -->|HTTPS| Auth[Caddy HTTPS 反向代理]
     Auth -->|认证通过| App[React Router 管理应用]
     App -->|添加和删除| Files[公开根目录]
     Visitor[访客浏览器] -->|HTTPS| Public[Caddy 公开路由代理]
@@ -19,7 +19,7 @@ flowchart LR
 
 | 组件 | 职责 |
 | --- | --- |
-| Caddy | HTTPS、管理端 Basic Auth、公开路由与管理路由反向代理 |
+| Caddy | HTTPS 和全部应用路由反向代理 |
 | React Router Framework 应用 | 渲染管理和公开界面，读取、上传、删除文件与流式下载 |
 | 本地文件系统 | 保存文件，并作为文件列表的唯一数据来源 |
 
@@ -51,7 +51,7 @@ flowchart LR
 
 ### 上传流程
 
-1. Caddy 对全部上传请求验证 Basic Auth，应用验证来源、文件名和声明大小。
+1. 上传路由先验证管理员会话，应用继续验证来源、文件名和声明大小。
 2. FileStore 在 `STATE_DIR/tmp/tus` 保存随机 ID 命名的数据和 JSON 元数据。PATCH 流式追加；偏移不一致返回 409，客户端 HEAD 后重试。
 3. 前端显示发送进度，暂停通过 abort 终止当前请求但保留任务。恢复时以服务器磁盘偏移为准。删除上传调用 tus DELETE，服务端清理数据与元数据。
 4. 最后一次 PATCH（零字节文件为创建 POST）调用 `onUploadFinish`。钩子重新获取与 tus 共用的任务锁，检查实际长度，执行 `copyFile(COPYFILE_EXCL)`，跨文件系统自动发布且禁止覆盖。钩子返回前不向客户端确认成功。
@@ -62,7 +62,7 @@ flowchart LR
 
 ### 删除流程
 
-1. Caddy 验证 Basic Auth 后，将删除表单提交给管理应用。
+1. 管理 action 验证管理员会话后处理删除表单。
 2. action 校验来源和相对路径，逐级检查目标位于公开根目录内且不是符号链接，允许普通文件或空目录。
 3. 删除目标文件或空目录并返回结果，React Router 随后刷新列表。
 
@@ -70,15 +70,17 @@ flowchart LR
 
 资源路由 `/public/download` 调用 `downloadPublicFile`，逐级检查路径和符号链接，以 `O_NOFOLLOW` 打开普通文件，通过文件句柄流式读取，设置附件文件名、长度、Last-Modified 和 Accept-Ranges。支持单段、开放尾端和后缀 Range；不可满足的范围返回 416，多段范围退回完整响应；If-Range 日期不匹配时返回完整内容。HEAD 和空文件不创建数据流。请求取消及流关闭释放文件句柄；列表/下载请求边界与传输错误记录日志。读取模块复用根目录检查，管理端递归文件树契约保持不变。与既有文件操作相同，路径检查与打开之间仍存在并发替换父目录的竞态，不能作为针对本机恶意目录修改者的文件系统沙箱。
 
-单域名下，Caddy 优先匿名代理 `/public`、`/public/*`、`/public.data`、构建静态资源、图标和路由发现 `/__manifest`，其余路由全部使用 Basic Auth，包括 `/`、`/index.data` 和上传接口。公开页与文件下载依赖应用运行，Caddy 不直接读取文件目录。
+Caddy 将全部请求代理给应用。`auth.server.ts` 复用 React Router Cookie Session Storage，签名 Cookie 保存管理员标识、到期时间和凭据版本。`password.server.ts` 使用 Node 异步 scrypt（N=16384、r=8、p=1），哈希保存随机盐及派生密钥，校验使用 timingSafeEqual。管理 loader/action 与上传资源路由分别调用统一认证守卫，校验发生在读取文件、解析操作表单或初始化上传服务之前。公开页与文件下载依赖应用运行，Caddy 不直接读取文件目录。
+
+`/login` POST 检查 Origin、进程内共享尝试上限及有界表单，再校验凭据，签发固定有效 7 天的会话并跳转管理页。登录表单仅接受 URL 编码且最多 16 KiB。`/logout` 仅接受同源 POST，清除浏览器 Cookie。会话使用 HttpOnly、SameSite=Lax；生产启用 Secure 和 __Host- Cookie 名称。服务端检查实际到期时间，凭据或签名密钥更改使旧会话失效；纯 Cookie 会话不能单独撤销已复制的会话。认证和管理页面响应禁止缓存。上传客户端识别 401，停止自动重试、保留任务地址和进度，重新登录后按现有断点流程恢复。
 
 管理页使用相对地址 `/public` 作为入口；点击生成链接时根据浏览器 `window.location.origin` 生成文件完整下载地址，确保反向代理后仍使用浏览器看到的 HTTPS 域名。地址由共用的 `publicDownloadUrl` 编码相对路径，不新增链接服务或持久化记录。点击“生成下载链接”显示只读地址，复制成功或剪贴板不可用时显示反馈。公开列表整行是链接：目录使用 Framework 导航，文件使用原生文档请求触发下载；不嵌套按钮，支持键盘操作。
 
 
 ## 5. 安全与运行约束
 
-- Caddy 在同域名内按路由区分认证：仅明确列出的公开入口不认证，其余请求应用 `basic_auth`。
-- Basic Auth 密码使用 `caddy hash-password` 生成哈希，配置中不保存明文密码。
+- 应用在管理与上传入口验证签名会话，公开页、下载和静态资源允许匿名访问。
+- 密码哈希和随机会话签名密钥通过环境变量提供；生产环境缺失或无效时拒绝启动，本地开发缺失时管理功能返回 503。
 - Docker 镜像以非 root 用户运行，容器内监听 `0.0.0.0:8123`，部署命令仅将端口发布到宿主机 `127.0.0.1:8123`；公开目录和文件权限分别采用 `0755`、`0644`，供独立的 Caddy 用户读取。这些是部署默认值，不是产品验收约束。
 - 删除 action 只接受 POST；上传资源支持 POST/HEAD/PATCH/DELETE。写请求要求 `Origin` 存在且与运行时 `USER_URL` 对应的 HTTPS 来源一致。本地开发时与请求 URL 的来源比较；生产域名在启动时读取，缺少或格式无效时拒绝启动。`packages/server.mjs` 将同一个运行时域名提供给 React Router 的 `allowedActionOrigins`。
 - 文件名必须是单个名称，拒绝绝对路径、路径分隔符、父目录引用、NUL、空名称及保留名称（`.`、`..`）。
@@ -95,6 +97,6 @@ flowchart LR
 - `USER_URL`：生产运行时必填的管理端主机名，可包含非默认端口，不含协议和路径；修改后重启应用或重新创建容器，无需重新构建镜像。本地开发使用请求 URL 的同源检查。
 - `LOGGER_LEVEL`：日志级别，默认 `info`。日志写入标准输出。应用保持 Pino JSON 输出；`npm run dev` 在启动命令后通过 `| pino-pretty` 美化标准输出，`pino-pretty` 仅作为开发依赖安装，生产启动不使用该管道。
 
-示例见 [`Caddyfile.example`](../Caddyfile.example)。替换域名、用户名和 `caddy hash-password` 生成的密码哈希；仅代理明确列出的公开路由，其余路由均要求认证。配置、日志、备份和临时文件均放在公开目录之外；不要通过服务器手动向公开目录放入符号链接。
+示例见 [`Caddyfile.example`](../Caddyfile.example)。替换域名并配置应用管理员凭据，全部路由代理给应用，由应用验证管理会话。配置、日志、备份和临时文件均放在公开目录之外；不要通过服务器手动向公开目录放入符号链接。
 
 历史双域名和 Caddy 直接文件服务部署曾于 2026-09-13 由部署者确认验证；当前单域名代理配置尚需部署验证。

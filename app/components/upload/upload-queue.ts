@@ -29,6 +29,19 @@ export type UploadTask = {
 	error?: string;
 	file?: File;
 };
+const SESSION_EXPIRED_MESSAGE = "登录已过期，请重新登录后继续上传。";
+class SessionExpiredError extends Error {
+	constructor() {
+		super(SESSION_EXPIRED_MESSAGE);
+	}
+}
+function isSessionExpired(error: Error) {
+	return (
+		error instanceof SessionExpiredError ||
+		("causingError" in error &&
+			error.causingError instanceof SessionExpiredError)
+	);
+}
 const STORAGE = "sharebox.uploads.v1";
 const CHUNK_SIZE = 8 * 1024 * 1024;
 
@@ -115,6 +128,19 @@ export class UploadQueue {
 				uploadUrl: task.url,
 				chunkSize: CHUNK_SIZE,
 				retryDelays: [0, 1000, 3000, 5000, 10000],
+				onShouldRetry: (error) => {
+					if (isSessionExpired(error)) return false;
+					const status = error.originalResponse?.getStatus();
+					return (
+						status !== 401 &&
+						status !== 403 &&
+						(status === undefined ||
+							status === 0 ||
+							status === 409 ||
+							status === 423 ||
+							status >= 500)
+					);
+				},
 				// The queue persists URLs together with visible task records.
 				storeFingerprintForResuming: false,
 				metadata: { filename: task.name },
@@ -122,6 +148,7 @@ export class UploadQueue {
 					// tus-js-client otherwise creates a new upload after a failed HEAD.
 					// Keep the URL and accepted bytes when completion is temporarily failing.
 					const status = response.getStatus();
+					if (status === 401) throw new SessionExpiredError();
 					if (
 						request.getMethod() === "HEAD" &&
 						status >= 400 &&
@@ -142,7 +169,12 @@ export class UploadQueue {
 				},
 				onError: (error) => {
 					if (this.statusOf(id) === "uploading")
-						this.update(task, { status: "error", error: error.message });
+						this.update(task, {
+							status: "error",
+							error: isSessionExpired(error)
+								? SESSION_EXPIRED_MESSAGE
+								: error.message,
+						});
 				},
 				onSuccess: () => {
 					if (!this.disposed && this.statusOf(id) === "uploading") {
@@ -192,6 +224,8 @@ export class UploadQueue {
 					method: "DELETE",
 					headers: { "Tus-Resumable": "1.0.0" },
 				});
+				if (response.status === 401)
+					throw new Error("登录已过期，请重新登录后重试。");
 				if (!response.ok && response.status !== 404 && response.status !== 410)
 					throw new Error("删除上传失败，请重试。");
 			}

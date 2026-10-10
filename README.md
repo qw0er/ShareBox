@@ -8,7 +8,7 @@ ShareBox 是部署在个人服务器上的轻量文件管理与分享工具，�
 - **断点上传**：多文件选择和拖放，显示进度，支持暂停、继续、失败重试和取消；默认每个文件最多 10 GiB，同时上传最多 2 个。
 - **公开下载**：在 `/public` 浏览目录，按名称筛选、排序和刷新；点击文件整行下载，点击目录整行查看。
 - **下载链接**：管理页提供公开页入口，可为文件生成并复制完整下载地址；下载支持 HEAD 和单段 Range。
-- **访问控制**：同一个 HTTPS 域名，管理端由 Caddy Basic Auth 保护，公开页和下载入口无需认证。
+- **访问控制**：同一个 HTTPS 域名，管理端使用应用内登录与签名 Cookie 会话保护，公开页和下载入口无需认证。
 
 面向单服务器和单个管理员凭据。文件系统是文件列表的唯一数据来源，配置与临时上传数据不对外公开。详细需求和实现见 [项目需求](docs/requirements.md) 与 [架构设计](docs/architecture.md)。
 
@@ -35,6 +35,29 @@ ShareBox 是部署在个人服务器上的轻量文件管理与分享工具，�
 
 容器监听 `8123`，仅发布到宿主机 `127.0.0.1:8123`。在宿主机安装 Caddy，配置域名 DNS 指向服务器，并开放 HTTP/HTTPS 端口。镜像以 UID/GID `1000:1000` 运行。
 
+### 管理员凭据
+
+先生成密码哈希和会话签名密钥。源码使用 Node.js 24 执行：
+
+```bash
+npm run auth:hash
+```
+
+也可直接使用镜像（尚未配置站点时即可运行）：
+
+```bash
+docker run --rm -it --entrypoint node ghcr.io/qw0er/sharebox:latest scripts/hash-password.mjs
+# rootless Podman 使用 podman run 的同样参数。
+```
+
+命令隐藏密码输入，要求输入两次，输出 `ADMIN_PASSWORD_HASH` 和随机 `SESSION_SECRET`。将输出与 `ADMIN_USERNAME=admin` 保存到私有配置文件，保留哈希两侧的单引号；不保存明文密码，不将文件放入公开数据目录或提交到 Git。
+
+Docker Compose 将文件保存为部署目录的 `sharebox.env`；Quadlet 保存为独立用户的 `~/.config/sharebox/auth.env`。设置文件权限为 `0600`，Quadlet 配置目录为 `0700`。三个配置项必须同时提供；生产环境缺少或无效时拒绝启动，本地开发缺少时也不能访问管理功能。
+
+登录入口为 `/login`，登录成功后返回管理页。会话固定有效 7 天，刷新及重启不会使会话失效；修改用户名、密码哈希或签名密钥并重启会使旧会话失效。退出通过管理页右上角按钮清除当前浏览器 Cookie。会话无需数据库，退出不能撤销已经复制到其他设备的 Cookie。
+
+单实例在 15 分钟内最多允许 10 次登录尝试，成功登录后重置计数；这是进程内共享限流，重启清空。上传遇到登录过期会停止重试并保留任务，重新登录后选择原文件继续上传。
+
 ### Docker Compose
 
 安装 Docker Engine 和 Compose 插件，在部署目录创建 `compose.yaml`，替换 `USER_URL`：
@@ -45,6 +68,8 @@ services:
     image: ghcr.io/qw0er/sharebox:latest
     restart: unless-stopped
     init: true
+    env_file:
+      - ./sharebox.env
     environment:
       USER_URL: sharebox.example.com
     ports:
@@ -121,6 +146,7 @@ ContainerName=sharebox
 UserNS=keep-id:uid=1000,gid=1000
 User=1000:1000
 Environment=USER_URL=sharebox.example.com
+EnvironmentFile=%h/.config/sharebox/auth.env
 PublishPort=127.0.0.1:8123:8123
 Volume=sharebox-state.volume:/var/lib/sharebox:U
 RunInit=true
@@ -156,92 +182,41 @@ systemctl --user restart sharebox.service
 
 停止服务使用 `systemctl --user stop sharebox.service`。更新前停止服务并备份 `sharebox-state` volume；回滚时修改 Quadlet 的 `Image` 为保留的版本标签，再重新加载和启动。命名 volume 属于独立用户，其他用户或 root 的 `podman` 命令不会操作同一份存储。
 
-### Caddy：HTTPS、反向代理与管理认证
+### Caddy：HTTPS 与反向代理
 
-Docker Compose 和 Podman Quadlet 共用这套配置：Caddy 在宿主机上运行，应用容器只向本机发布 `8123` 端口。Caddy 负责 HTTPS 和管理认证，文件由应用读取，不需要给 Caddy 挂载数据 volume。
+Caddy 在宿主机上运行，应用只向本机发布 `8123` 端口。登录和管理接口认证由应用处理，Caddy 不需要管理员凭据或数据 volume。
 
-**安装与准备**
+按 [官方说明](https://caddyserver.com/docs/install) 安装 Caddy，将域名 DNS 指向服务器，开放 TCP `80`、`443`，并将 `USER_URL` 设置为相同主机名。
 
-按 [Caddy 官方安装说明](https://caddyserver.com/docs/install) 安装对应发行版的软件包，使用随包提供的 `caddy.service` 管理服务。
-
-- 将域名的 A 记录指向服务器；配置了 AAAA 记录时，IPv6 地址也必须可达。
-- 在服务器防火墙、云安全组和路由器转发中开放 TCP `80`、`443`，并确保没有其他服务占用这两个端口。
-- 保持应用端口只绑定 `127.0.0.1:8123`，通过 Caddy 访问站点。
-- 将 Compose 或 Quadlet 的 `USER_URL` 设置为相同主机名，例如 `sharebox.example.com`，不带协议和路径。
-
-以下配置使用真实域名时，Caddy 自动申请和续期证书，并将 HTTP 重定向到 HTTPS。[自动 HTTPS 说明](https://caddyserver.com/docs/automatic-https)
-
-**配置站点**
-
-生成管理员密码哈希，按提示输入密码：
-
-```bash
-caddy hash-password
-```
-
-将下面的配置保存到 `/etc/caddy/Caddyfile`，替换域名、管理员用户名 `admin` 和 `REPLACE_WITH_CADDY_PASSWORD_HASH`。已有其他站点时，将这个站点块加入现有配置。仓库中的 [Caddyfile.example](Caddyfile.example) 提供相同示例。
+保存以下配置到 `/etc/caddy/Caddyfile`，替换域名；已有其他站点时加入这个站点块。仓库提供相同的 [Caddyfile.example](Caddyfile.example)。
 
 ```caddyfile
-# Replace the domain, username, and password hash before use.
-# Generate the hash with: caddy hash-password
-# Runtime USER_URL must match sharebox.example.com.
 sharebox.example.com {
-	# Public page, Framework loader requests, downloads and page assets.
-	@public_app path /public /public/* /public.data /assets/* /__manifest /favicon.ico /favicon.svg
-	handle @public_app {
-		reverse_proxy 127.0.0.1:8123
-	}
-
-	# Authenticate all remaining routes, including the management loader and uploads.
-	handle {
-		basic_auth {
-			admin REPLACE_WITH_CADDY_PASSWORD_HASH
-		}
-		reverse_proxy 127.0.0.1:8123
-	}
+ reverse_proxy 127.0.0.1:8123
 }
 ```
 
-公开路由单独代理，剩余请求先执行 Basic Auth 再代理到应用：
-
-| 路由 | 访问方式 |
-| --- | --- |
-| `/public`、`/public.data` | 匿名浏览公开页和读取目录数据 |
-| `/public/download` | 匿名下载文件 |
-| `/assets/*`、`/__manifest`、图标 | 匿名加载页面资源和路由信息 |
-| `/`、`/index.data`、`/uploads` 及其他路由 | 必须提供管理员凭据 |
-
-浏览器访问管理页时显示原生用户名和密码提示。应用没有单独的登录页；管理员密码只在 Caddy 中维护，配置保存哈希，不保存明文。[Basic Auth 说明](https://caddyserver.com/docs/caddyfile/directives/basic_auth)
-
-**加载与验证**
-
-首次启动：
+真实域名下 Caddy 自动管理 HTTPS 证书。由旧版本迁移时，先配置应用凭据、更新并验证应用登录，再移除原来的 `basic_auth` 和路由匹配配置，避免两层登录。
 
 ```bash
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl enable --now caddy
-```
-
-服务已经运行时，修改配置后先验证再加载：
-
-```bash
-sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+# 已在运行时加载新配置：
 sudo systemctl reload caddy
 ```
 
-检查后端、公开页与管理认证：
+验证入口：
 
 ```bash
-curl -I http://127.0.0.1:8123/public
 curl -I https://sharebox.example.com/public
 curl -I https://sharebox.example.com/
-curl -I https://sharebox.example.com/index.data
+curl -I https://sharebox.example.com/_.data
 curl -I https://sharebox.example.com/uploads
 ```
 
-正常情况下前两项返回 `200`，后三项在没有凭据时返回 `401`。然后用浏览器登录管理页，上传文件，确认 `/public` 和复制的下载链接可匿名获取完整内容。
+公开页应返回 `200`；匿名管理页跳转 `/login`，Framework 数据请求返回框架的跳转响应；匿名上传返回 `401`。浏览器登录后验证上传、重命名、删除和退出，确认公开页及下载链接可匿名访问。
 
-出现 `502` 时先检查应用容器是否运行、本机 `8123` 是否可访问。证书申请失败时检查 DNS、端口可达性和 Caddy 日志；公开页能打开但目录跳转失败时，确认 `/public.data` 和 `/__manifest` 的代理规则未被移除。
+出现 `502` 时检查应用容器与本机 `8123`；证书失败时检查 DNS、端口和 Caddy 日志。
 
 ```bash
 sudo systemctl status caddy
@@ -258,6 +233,9 @@ Compose 在 `environment` 下配置，Quadlet 使用 `[Container]` 下的 `Envir
 | `STATE_DIR` | 状态根目录；镜像默认 `/var/lib/sharebox`，与 volume 挂载目标一致 |
 | `MAX_UPLOAD_BYTES` | 单文件大小上限，默认 `10737418240`（10 GiB），必须为正安全整数 |
 | `LOGGER_LEVEL` | 日志级别，默认 `info` |
+| `ADMIN_USERNAME` | 管理员用户名 |
+| `ADMIN_PASSWORD_HASH` | `npm run auth:hash` 生成的带盐 scrypt 哈希 |
+| `SESSION_SECRET` | 随机签名密钥，至少 32 字节；跨重启保持一致 |
 
 同一个状态 volume 只供一个应用实例使用。旧的 `DATA_DIR`、`UPLOAD_TMP_DIR` 已被忽略，迁移时将原文件和上传数据分别放入状态 volume 的 `data/`、`tmp/` 中。
 
@@ -271,13 +249,16 @@ cd ShareBox
 npm ci
 ```
 
-本地开发：
+本地开发前按上文生成凭据，并保存到私有的 `sharebox.env`，再导入环境：
 
 ```bash
+set -a
+. ./sharebox.env
+set +a
 npm run dev
 ```
 
-打开终端显示的本地地址，管理页为 `/`，公开页为 `/public`。开发数据存放在项目的 `tmp/` 下，开发日志通过 `pino-pretty` 管道美化；本地开发服务不经过 Caddy 认证。
+打开终端显示的本地地址，管理页为 `/`，公开页为 `/public`。开发数据存放在项目的 `tmp/` 下，开发日志通过 `pino-pretty` 管道美化；本地开发也使用应用登录，HTTP 开发 Cookie 不带 Secure。
 
 检查和构建：
 
@@ -297,7 +278,7 @@ npm run build
 USER_URL=sharebox.example.com STATE_DIR=./tmp HOST=127.0.0.1 PORT=8123 npm start
 ```
 
-生产启动输出 JSON 日志，仍需配置 Caddy 提供 HTTPS 和认证。
+生产启动输出 JSON 日志，需要提前导入管理员凭据，并配置 Caddy 提供 HTTPS。
 
 从源码构建容器镜像：
 

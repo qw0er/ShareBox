@@ -1,5 +1,6 @@
 .DS_Store
 .env
+/sharebox.env
 /node_modules/
 
 # React Router
@@ -10,3 +11,4 @@ dist/
 .codex
 
 tmp/
+*.env

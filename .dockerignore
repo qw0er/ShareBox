@@ -3,6 +3,8 @@
 !packages/
 !packages/Dockerfile
 !packages/server.mjs
+!scripts/
+!scripts/hash-password.mjs
 !package.json
 !package-lock.json
 !app/

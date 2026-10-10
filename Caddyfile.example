@@ -1,18 +1,5 @@
-# Replace the domain, username, and password hash before use.
-# Generate the hash with: caddy hash-password
-# Runtime USER_URL must match sharebox.example.com.
+# Replace the domain before use. Runtime USER_URL must match it.
+# ShareBox handles administrator login; Caddy provides HTTPS and reverse proxy.
 sharebox.example.com {
-	# Public page, Framework loader requests, downloads and page assets.
-	@public_app path /public /public/* /public.data /assets/* /__manifest /favicon.ico /favicon.svg
-	handle @public_app {
-		reverse_proxy 127.0.0.1:8123
-	}
-
-	# Authenticate all remaining routes, including the management loader and uploads.
-	handle {
-		basic_auth {
-			admin REPLACE_WITH_CADDY_PASSWORD_HASH
-		}
-		reverse_proxy 127.0.0.1:8123
-	}
+ reverse_proxy 127.0.0.1:8123
 }

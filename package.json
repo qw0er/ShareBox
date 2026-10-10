@@ -10,7 +10,8 @@
 		"test": "vitest run",
 		"typecheck": "react-router typegen && tsc",
 		"lint": "biome lint .",
-		"check": "biome check . --write"
+		"check": "biome check . --write",
+		"auth:hash": "node scripts/hash-password.mjs"
 	},
 	"dependencies": {
 		"@emotion/react": "^11.14.0",
