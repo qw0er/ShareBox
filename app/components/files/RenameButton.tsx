@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
-import type { action } from "~/routes/home";
+import type { action } from "~/routes/files-rename";
 import type { FileNode } from "~/types/files";
 
 export default function RenameButton({ node }: { node: FileNode }) {
@@ -61,8 +61,8 @@ export default function RenameButton({ node }: { node: FileNode }) {
 						event.preventDefault();
 						if (!busy && !invalidName && newName !== node.name)
 							fetcher.submit(
-								{ intent: "rename", path: node.path, newName },
-								{ method: "post" },
+								{ path: node.path, newName },
+								{ method: "post", action: "/files/rename" },
 							);
 					}}
 				>

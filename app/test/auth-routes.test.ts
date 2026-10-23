@@ -4,27 +4,39 @@ import { hashPassword } from "../server/password.server";
 vi.mock("../server/config.server", () => ({
 	CONFIG: { adminHost: "", datadir: "/unused", maxUploadBytes: 100 },
 }));
-vi.mock("../server/logger.server", async (importOriginal) => ({
-	...(await importOriginal<typeof import("../server/logger.server")>()),
-	logger: {
+vi.mock("../server/logger.server", async (importOriginal) => {
+	const logger = {
 		debug: vi.fn(),
 		fatal: vi.fn(),
 		info: vi.fn(),
 		warn: vi.fn(),
 		error: vi.fn(),
-	},
-}));
+		child: vi.fn(),
+	};
+	logger.child.mockReturnValue(logger);
+	return {
+		...(await importOriginal<typeof import("../server/logger.server")>()),
+		logger,
+	};
+});
 vi.mock("../server/read-files.server", () => ({
 	getFileTree: vi.fn(async () => []),
 }));
-vi.mock("../server/file-actions.server", () => ({
-	handleFileAction: vi.fn(async () => ({ success: true })),
+vi.mock("../server/remove-action.server", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../server/remove-action.server")>()),
+	handleRemoveAction: vi.fn(async () => ({ success: true })),
+}));
+vi.mock("../server/rename-action.server", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../server/rename-action.server")>()),
+	handleRenameAction: vi.fn(async () => ({ success: true })),
 }));
 vi.mock("../server/tus.server", () => ({
 	handleTusRequest: vi.fn(async () => new Response(null, { status: 204 })),
 }));
 let home: typeof import("../routes/home");
 let uploads: typeof import("../routes/uploads");
+let filesRemove: typeof import("../routes/files-remove");
+let filesRename: typeof import("../routes/files-rename");
 let auth: ReturnType<typeof import("../server/auth.server").getAuth>;
 beforeAll(async () => {
 	vi.stubEnv("ADMIN_USERNAME", "admin");
@@ -32,6 +44,8 @@ beforeAll(async () => {
 	vi.stubEnv("SESSION_SECRET", "route-test-secret-at-least-32-bytes");
 	home = await import("../routes/home");
 	uploads = await import("../routes/uploads");
+	filesRemove = await import("../routes/files-remove");
+	filesRename = await import("../routes/files-rename");
 	auth = (await import("../server/auth.server")).getAuth();
 });
 afterAll(() => vi.unstubAllEnvs());
@@ -41,17 +55,36 @@ function uploadArgs(request: Request) {
 function args(request: Request) {
 	return { request } as Parameters<typeof home.loader>[0];
 }
-it("guards home loaders and actions before reading or mutating files", async () => {
+function removeActionArgs(request: Request) {
+	return { request } as Parameters<typeof filesRemove.action>[0];
+}
+function renameActionArgs(request: Request) {
+	return { request } as Parameters<typeof filesRename.action>[0];
+}
+it("guards home loader and file action routes before reading or mutating files", async () => {
 	const { getFileTree } = await import("../server/read-files.server");
-	const { handleFileAction } = await import("../server/file-actions.server");
+	const { handleRemoveAction } = await import("../server/remove-action.server");
+	const { handleRenameAction } = await import("../server/rename-action.server");
 	await expect(
 		home.loader(args(new Request("http://localhost/"))),
 	).rejects.toMatchObject({ status: 302 });
 	await expect(
-		home.action(args(new Request("http://localhost/", { method: "POST" }))),
+		filesRemove.action(
+			removeActionArgs(
+				new Request("http://localhost/files/remove", { method: "POST" }),
+			),
+		),
+	).rejects.toMatchObject({ status: 401 });
+	await expect(
+		filesRename.action(
+			renameActionArgs(
+				new Request("http://localhost/files/rename", { method: "POST" }),
+			),
+		),
 	).rejects.toMatchObject({ status: 401 });
 	expect(getFileTree).not.toHaveBeenCalled();
-	expect(handleFileAction).not.toHaveBeenCalled();
+	expect(handleRemoveAction).not.toHaveBeenCalled();
+	expect(handleRenameAction).not.toHaveBeenCalled();
 });
 it("guards all tus methods before invoking the upload service", async () => {
 	const { handleTusRequest } = await import("../server/tus.server");
@@ -87,16 +120,36 @@ it("passes authenticated management and tus requests to their existing handlers"
 			args(new Request("http://localhost/", { headers: { Cookie: cookie } })),
 		),
 	).toMatchObject({ fileTree: [] });
+	const actionHeaders = { Cookie: cookie, Origin: "http://localhost" };
 	expect(
-		await home.action(
-			args(
-				new Request("http://localhost/", {
+		await filesRemove.action(
+			removeActionArgs(
+				new Request("http://localhost/files/remove", {
 					method: "POST",
-					headers: { Cookie: cookie },
+					headers: actionHeaders,
+					body: new URLSearchParams({ path: "missing.txt" }),
 				}),
 			),
 		),
 	).toEqual({ success: true });
+	expect(
+		await filesRename.action(
+			renameActionArgs(
+				new Request("http://localhost/files/rename", {
+					method: "POST",
+					headers: actionHeaders,
+					body: new URLSearchParams({
+						path: "missing.txt",
+						newName: "renamed.txt",
+					}),
+				}),
+			),
+		),
+	).toEqual({ success: true });
+	const { handleRemoveAction } = await import("../server/remove-action.server");
+	const { handleRenameAction } = await import("../server/rename-action.server");
+	expect(handleRemoveAction).toHaveBeenCalledOnce();
+	expect(handleRenameAction).toHaveBeenCalledOnce();
 	expect(
 		(
 			await uploads.action(

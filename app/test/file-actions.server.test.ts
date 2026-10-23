@@ -21,7 +21,9 @@ delete process.env.UPLOAD_TMP_DIR;
 process.env.LOGGER_LEVEL = "silent";
 
 const { CONFIG } = await import("../server/config.server");
-const { handleFileAction } = await import("../server/file-actions.server");
+const { prepareFileAction } = await import("../server/file-actions.server");
+const { handleRemoveAction } = await import("../server/remove-action.server");
+const { handleRenameAction } = await import("../server/rename-action.server");
 const originalDataDir = CONFIG.datadir;
 
 async function actionRequest(formData: FormData): Promise<Request> {
@@ -35,6 +37,26 @@ async function actionRequest(formData: FormData): Promise<Request> {
 		headers: encoded.headers,
 		body: await encoded.arrayBuffer(),
 	});
+}
+
+async function contextFor(request: Request, operation: "remove" | "rename") {
+	const prepared = await prepareFileAction(request, operation);
+	if (!prepared.ok) {
+		throw new Error(`Unexpected preparation failure: ${prepared.result.error}`);
+	}
+	return prepared.context;
+}
+
+async function submitRemove(form: FormData) {
+	return handleRemoveAction(
+		await contextFor(await actionRequest(form), "remove"),
+	);
+}
+
+async function submitRename(form: FormData) {
+	return handleRenameAction(
+		await contextFor(await actionRequest(form), "rename"),
+	);
 }
 
 describe("file actions", () => {
@@ -59,32 +81,27 @@ describe("file actions", () => {
 		const filePath = path.join(CONFIG.datadir, "remove.txt");
 		await writeFile(filePath, "content");
 		const form = new FormData();
-		form.set("intent", "remove");
 		form.set("path", "remove.txt");
 
-		await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
-			success: true,
-		});
+		await expect(submitRemove(form)).resolves.toEqual({ success: true });
 		await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
 	it("rejects files in a removal request", async () => {
 		const form = new FormData();
-		form.set("intent", "remove");
 		form.set("path", "remove.txt");
 		form.set("file", new File(["content"], "remove.txt"));
 
-		await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
+		await expect(submitRemove(form)).resolves.toEqual({
 			error: "操作表单无效，请刷新页面后重试。",
 		});
 	});
 
 	it("reports a missing removal target", async () => {
 		const form = new FormData();
-		form.set("intent", "remove");
 		form.set("path", "missing.txt");
 
-		await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
+		await expect(submitRemove(form)).resolves.toEqual({
 			error: "文件或文件夹已不存在，请刷新列表。",
 		});
 	});
@@ -96,10 +113,9 @@ describe("file actions", () => {
 			"content",
 		);
 		const form = new FormData();
-		form.set("intent", "remove");
 		form.set("path", "not-empty");
 
-		await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
+		await expect(submitRemove(form)).resolves.toEqual({
 			error: "文件夹不为空，请先删除其中的内容。",
 		});
 	});
@@ -108,12 +124,9 @@ describe("file actions", () => {
 		"rejects invalid removal path %j",
 		async (pathValue) => {
 			const form = new FormData();
-			form.set("intent", "remove");
 			form.set("path", pathValue);
 
-			await expect(
-				handleFileAction(await actionRequest(form)),
-			).resolves.toEqual({
+			await expect(submitRemove(form)).resolves.toEqual({
 				error: "文件路径无效，请刷新列表后重试。",
 			});
 		},
@@ -122,12 +135,9 @@ describe("file actions", () => {
 	it("renames a file and preserves its contents", async () => {
 		await writeFile(path.join(CONFIG.datadir, "old.txt"), "contents");
 		const form = new FormData();
-		form.set("intent", "rename");
 		form.set("path", "old.txt");
 		form.set("newName", "new.txt");
-		expect(await handleFileAction(await actionRequest(form))).toEqual({
-			success: true,
-		});
+		expect(await submitRename(form)).toEqual({ success: true });
 		expect(await readFile(path.join(CONFIG.datadir, "new.txt"), "utf8")).toBe(
 			"contents",
 		);
@@ -137,10 +147,9 @@ describe("file actions", () => {
 		async (newName) => {
 			await writeFile(path.join(CONFIG.datadir, "old.txt"), "contents");
 			const form = new FormData();
-			form.set("intent", "rename");
 			form.set("path", "old.txt");
 			form.set("newName", newName);
-			expect(await handleFileAction(await actionRequest(form))).toEqual({
+			expect(await submitRename(form)).toEqual({
 				error: "文件名无效，请输入有效的新名称。",
 			});
 			expect(await readFile(path.join(CONFIG.datadir, "old.txt"), "utf8")).toBe(
@@ -153,12 +162,9 @@ describe("file actions", () => {
 		await symlink(rootDir, path.join(CONFIG.datadir, "link"));
 		for (const target of ["../outside.txt", "link/outside.txt"]) {
 			const form = new FormData();
-			form.set("intent", "rename");
 			form.set("path", target);
 			form.set("newName", "new.txt");
-			expect(
-				(await handleFileAction(await actionRequest(form))).error,
-			).toBeDefined();
+			expect((await submitRename(form)).error).toBeDefined();
 		}
 		expect(await readFile(path.join(rootDir, "outside.txt"), "utf8")).toBe(
 			"contents",
@@ -173,49 +179,44 @@ describe("file actions", () => {
 			},
 			body: "broken",
 		});
-		expect(await handleFileAction(request)).toEqual({
-			error: "无法读取操作表单，请刷新页面后重试。",
+		expect(await prepareFileAction(request, "remove")).toEqual({
+			ok: false,
+			result: { error: "无法读取操作表单，请刷新页面后重试。" },
 		});
 	});
-	it.each(["constructor", "__proto__"])(
-		"rejects inherited action name %s",
-		async (intent) => {
-			const form = new FormData();
-			form.set("intent", intent);
-			expect(await handleFileAction(await actionRequest(form))).toEqual({
-				error: "不支持此操作，请刷新页面后重试。",
-			});
-		},
-	);
-
-	it("rejects unsupported actions", async () => {
+	it("prepares the parsed form and operation logger", async () => {
 		const form = new FormData();
-		form.set("intent", "upload");
+		form.set("path", "value.txt");
 
-		await expect(handleFileAction(await actionRequest(form))).resolves.toEqual({
-			error: "不支持此操作，请刷新页面后重试。",
-		});
+		const prepared = await prepareFileAction(
+			await actionRequest(form),
+			"remove",
+		);
+		expect(prepared.ok).toBe(true);
+		if (!prepared.ok) throw new Error("Expected prepared file action");
+		expect(prepared.context.form.get("path")).toBe("value.txt");
+		expect(prepared.context.requestLogger).toBeDefined();
 	});
-
 	it.each(["PUT", "PATCH", "DELETE"])(
 		"rejects %s before reading the body",
 		async (method) => {
 			const request = new Request("http://localhost/", { method });
-			expect(await handleFileAction(request)).toEqual({
-				error: "此操作仅支持提交表单，请刷新页面后重试。",
+			expect(await prepareFileAction(request, "remove")).toEqual({
+				ok: false,
+				result: { error: "此操作仅支持提交表单，请刷新页面后重试。" },
 			});
 		},
 	);
 
 	it("rejects an invalid origin", async () => {
 		const form = new FormData();
-		form.set("intent", "remove");
 		form.set("path", "missing.txt");
 		const request = await actionRequest(form);
 		request.headers.set("origin", "https://evil.example");
 
-		await expect(handleFileAction(request)).resolves.toEqual({
-			error: "请求来源无效，请从本站页面重新操作。",
+		await expect(prepareFileAction(request, "remove")).resolves.toEqual({
+			ok: false,
+			result: { error: "请求来源无效，请从本站页面重新操作。" },
 		});
 	});
 });

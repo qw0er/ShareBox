@@ -23,20 +23,20 @@ flowchart LR
 | React Router Framework 应用 | 渲染管理和公开界面，读取、上传、删除文件与流式下载 |
 | 本地文件系统 | 保存文件，并作为文件列表的唯一数据来源 |
 
-管理应用使用 Node.js 和 TypeScript，界面使用 React Router Framework 与 MUI。应用保留服务端运行时和 SSR，服务端 `loader` 读取文件列表，`action` 处理上传和删除。
+管理应用使用 Node.js 和 TypeScript，界面使用 React Router Framework 与 MUI。应用保留服务端运行时和 SSR，服务端 `loader` 读取文件列表，独立资源路由的 `action` 处理文件删除、重命名和上传。
 
 ## 3. 路由和请求处理
 
 管理页面路由 `/`：
 
 - `loader` 递归读取公开根目录中的文件和目录，返回文件名、相对路径、文件大小和子节点。
-- 页面使用 MUI 目录树、文件选择和拖放区域、上传按钮及删除确认对话框。
-- `action` 根据表单中的 `intent` 执行 `remove`。
+- 页面使用 MUI 目录树、文件选择和拖放区域、上传按钮、重命名和删除确认对话框。
+- 文件操作使用独立资源路由：`POST /files/remove` 和 `POST /files/rename`，由页面按钮通过 fetcher 显式指定 action 提交。
 - 操作成功后由 React Router 重新验证 loader，刷新文件列表。
 
 上传组件使用 `tus-js-client`，每个 PATCH 最多 8 MiB，同时传输最多 2 个文件。资源路由 `/uploads/*` 转交 `@tus/server.handleWeb`，POST 创建任务，HEAD 查询已落盘偏移，PATCH 续传，DELETE 终止。全部在管理端同源认证边界内，不提供跨源客户端支持。`UploadService` 通过 `onUploadFinish` 在成功响应前自动发布；前端仅在 tus `onSuccess` 后调用 revalidator，不再发送独立的 complete 请求。浏览器保存任务元数据，不保存文件内容，刷新后重新选择原文件即可恢复。字节进度到 100% 但响应尚未返回时显示“正在完成”；旧的 publishing/transferred 本地记录恢复为普通暂停任务。
 
-删除使用 POST 提交 `intent=remove` 和相对路径 `path`。确认后才提交，取消保持文件不变。操作成功后由 React Router 重新验证 loader。
+删除使用 POST `/files/remove` 提交相对路径 `path`，重命名使用 POST `/files/rename` 提交相对路径 `path` 和新名称 `newName`。确认后才提交，取消保持文件不变。操作成功后由 React Router 重新验证 loader。
 
 ## 4. 文件存储
 
@@ -60,11 +60,11 @@ flowchart LR
 
 复制发布继续沿用非原子契约：复制期间公开文件可能不完整，强制终止可能留下残缺文件；复制成功但回执落盘前崩溃时，重试会报告同名冲突，需人工核对。没有整文件哈希校验。短块请求避免整个大文件共用 5 分钟接收窗口，但每个请求仍受 Node/代理超时约束，中断可续传。
 
-### 删除流程
+### 删除与重命名流程
 
-1. 管理 action 验证管理员会话后处理删除表单。
-2. action 校验来源和相对路径，逐级检查目标位于公开根目录内且不是符号链接，允许普通文件或空目录。
-3. 删除目标文件或空目录并返回结果，React Router 随后刷新列表。
+1. `/files/remove`、`/files/rename` 资源路由验证管理员会话后处理各自表单。
+2. 路由在认证后校验 POST 方法、请求来源和表单，准备操作上下文，然后直接调用对应的删除或重命名 handler；handler 校验相对路径，逐级检查目标位于公开根目录内且不是符号链接。删除允许普通文件或空目录，重命名拒绝路径分隔符和空名称。
+3. 删除目标文件或空目录、或重命名目标后返回结果，React Router 随后刷新列表。
 
 公开页面 `/public` 使用独立 loader 调用 `readPublicDirectory`，仅扫描当前目录并返回名称、相对路径、类型、大小、修改时间和同源下载地址。路径存入 `?path=`，刷新和分享页面地址可以恢复目录。筛选与排序在当前目录数据上执行。公开页不提供写操作，错误边界不返回内部路径或异常详情。
 
@@ -82,7 +82,7 @@ Caddy 将全部请求代理给应用。`auth.server.ts` 复用 React Router Cook
 - 应用在管理与上传入口验证签名会话，公开页、下载和静态资源允许匿名访问。
 - 密码哈希和随机会话签名密钥通过环境变量提供；生产环境缺失或无效时拒绝启动，本地开发缺失时管理功能返回 503。
 - Docker 镜像以非 root 用户运行，容器内监听 `0.0.0.0:8123`，部署命令仅将端口发布到宿主机 `127.0.0.1:8123`；公开目录和文件权限分别采用 `0755`、`0644`，供独立的 Caddy 用户读取。这些是部署默认值，不是产品验收约束。
-- 删除 action 只接受 POST；上传资源支持 POST/HEAD/PATCH/DELETE。写请求要求 `Origin` 存在且与运行时 `USER_URL` 对应的 HTTPS 来源一致。本地开发时与请求 URL 的来源比较；生产域名在启动时读取，缺少或格式无效时拒绝启动。`packages/server.mjs` 将同一个运行时域名提供给 React Router 的 `allowedActionOrigins`。
+- 删除和重命名资源路由只接受 POST；上传资源支持 POST/HEAD/PATCH/DELETE。写请求要求 `Origin` 存在且与运行时 `USER_URL` 对应的 HTTPS 来源一致。本地开发时与请求 URL 的来源比较；生产域名在启动时读取，缺少或格式无效时拒绝启动。`packages/server.mjs` 将同一个运行时域名提供给 React Router 的 `allowedActionOrigins`。
 - 文件名必须是单个名称，拒绝绝对路径、路径分隔符、父目录引用、NUL、空名称及保留名称（`.`、`..`）。
 - 上传不覆盖任何已有目录项，因此不会写入同名符号链接的目标；读取和删除逐级检查符号链接。
 - 同名文件一律拒绝。上传发布必须避免检查与发布之间的并发覆盖。

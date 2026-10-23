@@ -6,6 +6,8 @@ export default [
 	route("logout", "routes/logout.ts"),
 	route("public", "routes/public.tsx"),
 	route("public/download", "routes/public-download.ts"),
+	route("files/remove", "routes/files-remove.ts"),
+	route("files/rename", "routes/files-rename.ts"),
 	route("uploads/*", "routes/uploads.ts"),
 	route("favicon.ico", "routes/favicon.ts"),
 ] satisfies RouteConfig;

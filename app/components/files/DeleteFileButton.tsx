@@ -13,7 +13,7 @@ import {
 } from "@mui/material";
 import { useState } from "react";
 import { useFetcher } from "react-router";
-import type { action } from "~/routes/home";
+import type { action } from "~/routes/files-remove";
 import type { FileNode } from "~/types/files";
 
 export default function DeleteFileButton({ node }: { node: FileNode }) {
@@ -76,8 +76,8 @@ export default function DeleteFileButton({ node }: { node: FileNode }) {
 						disabled={busy}
 						onClick={() =>
 							fetcher.submit(
-								{ intent: "remove", path: node.path },
-								{ method: "post" },
+								{ path: node.path },
+								{ method: "post", action: "/files/remove" },
 							)
 						}
 					>

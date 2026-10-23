@@ -3,7 +3,6 @@ import WorkspaceLayout from "~/components/layout/WorkspaceLayout";
 import UploadPanel from "~/components/upload/UploadPanel";
 import { getAuth } from "~/server/auth.server";
 import { CONFIG } from "~/server/config.server";
-import { handleFileAction } from "~/server/file-actions.server";
 import { logger, withRequestLogging } from "~/server/logger.server";
 import { getFileTree } from "~/server/read-files.server";
 import type { Route } from "./+types/home";
@@ -45,13 +44,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 		}
 	});
 }
-export async function action({ request }: Route.ActionArgs) {
-	return withRequestLogging(request, "home", async () => {
-		await getAuth().requireAdmin(request);
-		return handleFileAction(request);
-	});
-}
-
 export default function Home({ loaderData }: Route.ComponentProps) {
 	return (
 		<WorkspaceLayout>
