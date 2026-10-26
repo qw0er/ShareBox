@@ -4,7 +4,10 @@
 !packages/Dockerfile
 !packages/server.mjs
 !scripts/
-!scripts/hash-password.mjs
+!scripts/reset-password.mjs
+!scripts/migrate-state.mjs
+!drizzle/
+!drizzle/**
 !package.json
 !package-lock.json
 !app/
