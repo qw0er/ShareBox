@@ -2,7 +2,7 @@
 FROM node:24-bookworm-slim AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --ignore-scripts --no-audit --no-fund
 
 FROM dependencies AS build
 COPY app ./app
@@ -14,7 +14,8 @@ RUN npm run build
 FROM node:24-alpine AS production-dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+ && npm cache clean --force
 
 FROM node:24-alpine AS runtime
 WORKDIR /app
@@ -25,6 +26,7 @@ ENV NODE_ENV=production \
     MAX_UPLOAD_BYTES=10737418240
 COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=production-dependencies /app/package.json ./package.json
+RUN node -e "require('better-sqlite3')"
 COPY --from=build /app/build ./build
 COPY packages/server.mjs ./packages/server.mjs
 COPY scripts/reset-password.mjs ./scripts/reset-password.mjs
