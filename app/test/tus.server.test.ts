@@ -34,12 +34,13 @@ const { createUploadService, UploadService, handleTusRequest } = await import(
 	"../server/tus.server"
 );
 let root: string;
-let config: Parameters<typeof createUploadService>[0];
+let config: NonNullable<Parameters<typeof createUploadService>[0]>;
 let service: Awaited<ReturnType<typeof createUploadService>>;
 beforeEach(async () => {
 	root = await mkdtemp(path.join(os.tmpdir(), "sharebox-tus-"));
 	await mkdir(path.join(root, "files"));
 	config = {
+		dbPath: path.join(root, "state.db"),
 		filesDir: path.join(root, "files"),
 		stagingDir: path.join(root, "staging"),
 		maxUploadBytes: 1024,
@@ -74,13 +75,24 @@ function request(
 		} as RequestInit),
 	);
 }
+function uploadLocation(response: Response) {
+	const location = response.headers.get("Location");
+	if (!location)
+		throw new Error("Upload creation response is missing Location");
+	return location;
+}
+function uploadId(url: string) {
+	const id = new URL(url, "http://localhost").pathname.split("/").pop();
+	if (!id) throw new Error("Upload URL is missing its ID");
+	return id;
+}
 async function create(name = "包.txt", size = 5) {
 	const response = await request("POST", "/uploads", {
 		"Upload-Length": String(size),
 		"Upload-Metadata": `filename ${Buffer.from(name).toString("base64")}`,
 	});
 	expect(response.status).toBe(201);
-	return response.headers.get("Location")!;
+	return uploadLocation(response);
 }
 function patch(url: string, offset: number, body: BodyInit) {
 	return request(
@@ -96,14 +108,14 @@ function patch(url: string, offset: number, body: BodyInit) {
 it("resumes across service restarts and publishes once after complete transfer", async () => {
 	const url = await create();
 	expect((await patch(url, 0, "he")).status).toBe(204);
-	expect(await readdir(config!.filesDir)).toEqual([]);
+	expect(await readdir(config.filesDir)).toEqual([]);
 	expect((await request("POST", `${url}/complete`)).status).toBe(404);
 	service = await createUploadService(config);
 	expect((await request("HEAD", url)).headers.get("Upload-Offset")).toBe("2");
 	expect((await patch(url, 0, "oops")).status).toBe(409);
 	expect((await patch(url, 2, "llo")).status).toBe(204);
 	expect((await request("POST", `${url}/complete`)).status).toBe(404);
-	expect(await readFile(path.join(config!.filesDir, "包.txt"), "utf8")).toBe(
+	expect(await readFile(path.join(config.filesDir, "包.txt"), "utf8")).toBe(
 		"hello",
 	);
 	expect(await readdir(path.join(root, "staging/tus"))).toEqual([]);
@@ -116,7 +128,7 @@ it("resumes across service restarts and publishes once after complete transfer",
 });
 it("retains accepted bytes after a broken request body", async () => {
 	const url = await create();
-	let controller: ReadableStreamDefaultController<Uint8Array>;
+	let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
 	const body = new ReadableStream<Uint8Array>({
 		start(c) {
 			controller = c;
@@ -127,13 +139,12 @@ it("retains accepted bytes after a broken request body", async () => {
 	const { vi } = await import("vitest");
 	await vi.waitFor(async () =>
 		expect(
-			await readFile(
-				path.join(root, "staging/tus", url.split("/").pop()!),
-				"utf8",
-			),
+			await readFile(path.join(root, "staging/tus", uploadId(url)), "utf8"),
 		).toBe("he"),
 	);
-	controller!.error(new Error("connection lost"));
+	if (!controller)
+		throw new Error("Request body controller was not initialized");
+	controller.error(new Error("connection lost"));
 	expect((await pending).status).toBeGreaterThanOrEqual(400);
 	expect((await request("HEAD", url)).headers.get("Upload-Offset")).toBe("2");
 	expect((await patch(url, 2, "llo")).status).toBe(204);
@@ -144,7 +155,7 @@ it("terminates paused uploads without publishing anything", async () => {
 	expect((await request("DELETE", url)).status).toBe(204);
 	expect((await request("HEAD", url)).status).toBe(404);
 	expect(await readdir(path.join(root, "staging/tus"))).toEqual([]);
-	expect(await readdir(config!.filesDir)).toEqual([]);
+	expect(await readdir(config.filesDir)).toEqual([]);
 });
 it("rejects names, size limits, cross-origin mutations and unknown IDs", async () => {
 	for (const name of ["../escape", ".", "a/b", ""]) {
@@ -171,29 +182,22 @@ it("keeps completed data for retry when another upload wins the filename", async
 	const second = await create("same.txt");
 	expect((await patch(first, 0, "first")).status).toBe(204);
 	expect((await patch(second, 0, "other")).status).toBe(409);
-	expect(await readFile(path.join(config!.filesDir, "same.txt"), "utf8")).toBe(
+	expect(await readFile(path.join(config.filesDir, "same.txt"), "utf8")).toBe(
 		"first",
 	);
 	expect((await request("HEAD", second)).status).toBe(409);
 	expect(
-		await readFile(
-			path.join(root, "staging/tus", second.split("/").pop()!),
-			"utf8",
-		),
+		await readFile(path.join(root, "staging/tus", uploadId(second)), "utf8"),
 	).toBe("other");
 	expect((await request("DELETE", second)).status).toBe(204);
 });
 it("publishes zero-byte files and cleans expired unfinished tasks", async () => {
 	const empty = await create("empty", 0);
 	expect((await request("HEAD", empty)).headers.get("Upload-Offset")).toBe("0");
-	expect((await lstat(path.join(config!.filesDir, "empty"))).size).toBe(0);
+	expect((await lstat(path.join(config.filesDir, "empty"))).size).toBe(0);
 	expect(await readdir(path.join(root, "staging/tus"))).toEqual([]);
 	const url = await create();
-	const infoPath = path.join(
-		root,
-		"staging/tus",
-		`${url.split("/").pop()}.json`,
-	);
+	const infoPath = path.join(root, "staging/tus", `${uploadId(url)}.json`);
 	const files = await readdir(path.join(root, "staging/tus"));
 	const metadataPath = path.join(
 		root,
@@ -214,7 +218,7 @@ it("does not report completed HEAD after a copy failure and recovers without ret
 		Object.assign(new Error("disk full"), { code: "ENOSPC" }),
 	);
 	expect((await patch(url, 0, "hello")).status).toBe(500);
-	expect(await readdir(config!.filesDir)).toEqual([]);
+	expect(await readdir(config.filesDir)).toEqual([]);
 	copy.mockRejectedValueOnce(
 		Object.assign(new Error("disk full"), { code: "ENOSPC" }),
 	);
@@ -225,7 +229,7 @@ it("does not report completed HEAD after a copy failure and recovers without ret
 	const recovered = await request("HEAD", url);
 	expect(recovered.status).toBe(200);
 	expect(recovered.headers.get("Upload-Offset")).toBe("5");
-	expect(await readFile(path.join(config!.filesDir, "包.txt"), "utf8")).toBe(
+	expect(await readFile(path.join(config.filesDir, "包.txt"), "utf8")).toBe(
 		"hello",
 	);
 	expect(await readdir(path.join(root, "staging/tus"))).toEqual([]);
@@ -233,7 +237,8 @@ it("does not report completed HEAD after a copy failure and recovers without ret
 
 it("serializes HEAD and DELETE with publication and skips active uploads during cleanup", async () => {
 	const url = await create();
-	const realCopy = vi.mocked(copyFile).getMockImplementation()!;
+	const realCopy = vi.mocked(copyFile).getMockImplementation();
+	if (!realCopy) throw new Error("Missing copyFile mock implementation");
 	let release!: () => void;
 	let entered!: () => void;
 	const started = new Promise<void>((resolve) => {
@@ -262,12 +267,12 @@ it("serializes HEAD and DELETE with publication and skips active uploads during 
 	await service.cleanup();
 	expect(headDone).toBe(false);
 	expect(deleteDone).toBe(false);
-	expect(await readdir(config!.filesDir)).toEqual([]);
+	expect(await readdir(config.filesDir)).toEqual([]);
 	release();
 	expect((await patching).status).toBe(204);
 	expect((await heading).headers.get("Upload-Offset")).toBe("5");
 	expect([204, 404]).toContain((await deleting).status);
-	expect(await readFile(path.join(config!.filesDir, "包.txt"), "utf8")).toBe(
+	expect(await readFile(path.join(config.filesDir, "包.txt"), "utf8")).toBe(
 		"hello",
 	);
 	expect((await request("HEAD", url)).status).toBe(200);
@@ -281,14 +286,11 @@ it("does not overwrite a copied file if receipt persistence failed", async () =>
 	expect((await patch(url, 0, "hello")).status).toBe(500);
 	service = await createUploadService(config);
 	expect((await request("HEAD", url)).status).toBe(409);
-	expect(await readFile(path.join(config!.filesDir, "包.txt"), "utf8")).toBe(
+	expect(await readFile(path.join(config.filesDir, "包.txt"), "utf8")).toBe(
 		"hello",
 	);
 	expect(
-		await readFile(
-			path.join(root, "staging/tus", url.split("/").pop()!),
-			"utf8",
-		),
+		await readFile(path.join(root, "staging/tus", uploadId(url)), "utf8"),
 	).toBe("hello");
 });
 
@@ -304,10 +306,10 @@ it("publishes bytes included in the creation POST before cleaning its source", a
 		"hello",
 	);
 	expect(response.status).toBe(201);
-	const url = response.headers.get("Location")!;
+	const url = uploadLocation(response);
 	expect((await request("HEAD", url)).headers.get("Upload-Offset")).toBe("5");
 	expect(
-		await readFile(path.join(config!.filesDir, "created.txt"), "utf8"),
+		await readFile(path.join(config.filesDir, "created.txt"), "utf8"),
 	).toBe("hello");
 	expect(await readdir(path.join(root, "staging/tus"))).toEqual([]);
 });
@@ -322,7 +324,7 @@ it("deletes a failed receipt's staging file along with the upload", async () => 
 	expect((await request("DELETE", url)).status).toBe(204);
 	expect(await readdir(path.join(root, "staging/tus-receipts"))).toEqual([]);
 	expect(await readdir(path.join(root, "staging/tus"))).toEqual([]);
-	expect(await readFile(path.join(config!.filesDir, "包.txt"), "utf8")).toBe(
+	expect(await readFile(path.join(config.filesDir, "包.txt"), "utf8")).toBe(
 		"hello",
 	);
 });
@@ -341,11 +343,7 @@ it("rejects invalid protocol headers even when a completion receipt exists", asy
 it("expires receipts without deleting public files and supports old receipts", async () => {
 	const url = await create();
 	await patch(url, 0, "hello");
-	const receiptPath = path.join(
-		root,
-		"staging/tus-receipts",
-		url.split("/").pop()!,
-	);
+	const receiptPath = path.join(root, "staging/tus-receipts", uploadId(url));
 	await writeFile(
 		receiptPath,
 		JSON.stringify({ success: true, filename: "包.txt" }),
@@ -356,7 +354,7 @@ it("expires receipts without deleting public files and supports old receipts", a
 	await service.cleanup();
 	expect(await readdir(path.join(root, "staging/tus-receipts"))).toEqual([]);
 	expect((await request("HEAD", url)).status).toBe(404);
-	expect(await readFile(path.join(config!.filesDir, "包.txt"), "utf8")).toBe(
+	expect(await readFile(path.join(config.filesDir, "包.txt"), "utf8")).toBe(
 		"hello",
 	);
 });
@@ -491,7 +489,7 @@ it.each(["copy failure", "lost response"])(
 				failure === "copy failure" ? 3 : 1,
 			);
 			expect(
-				await readFile(path.join(config!.filesDir, "client.txt"), "utf8"),
+				await readFile(path.join(config.filesDir, "client.txt"), "utf8"),
 			).toBe("hello");
 			expect(await readdir(path.join(root, "staging/tus"))).toEqual([]);
 		} finally {
@@ -506,12 +504,12 @@ it.each(["same", "child", "parent"])(
 	async (layout) => {
 		const stagingDir =
 			layout === "same"
-				? config!.filesDir
+				? config.filesDir
 				: layout === "child"
-					? path.join(config!.filesDir, "private")
+					? path.join(config.filesDir, "private")
 					: root;
 		await expect(
-			createUploadService({ ...config!, stagingDir }),
+			createUploadService({ ...config, stagingDir }),
 		).rejects.toThrow("Staging directory must be separate");
 	},
 );
@@ -523,7 +521,7 @@ it("keeps source, path, and method validation at the request boundary", async ()
 	const url = await create();
 	expect((await request("POST", url)).status).toBe(405);
 	service = await createUploadService({
-		...config!,
+		...config,
 		adminHost: "admin.example",
 	});
 	expect((await request("HEAD", url)).status).toBe(403);
@@ -541,7 +539,7 @@ it.each([
 	const url = await create();
 	await patch(url, 0, "hello");
 	await writeFile(
-		path.join(root, "staging/tus-receipts", url.split("/").pop()!),
+		path.join(root, "staging/tus-receipts", uploadId(url)),
 		JSON.stringify(receipt),
 	);
 	const response = await request("HEAD", url);
@@ -563,11 +561,7 @@ it.each([null, "failure", { status_code: 700, body: 123 }])(
 
 it("uses the same strict expiration boundary for completion and cleanup", async () => {
 	const url = await create();
-	const metadataPath = path.join(
-		root,
-		"staging/tus",
-		`${url.split("/").pop()!}.json`,
-	);
+	const metadataPath = path.join(root, "staging/tus", `${uploadId(url)}.json`);
 	const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
 	const created = Date.parse(metadata.creation_date);
 	const now = vi

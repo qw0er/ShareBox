@@ -1,32 +1,26 @@
 import { createHmac } from "node:crypto";
 import { createCookieSessionStorage, data, redirect } from "react-router";
-import { readAuthConfig } from "./auth-config.server";
-import { CONFIG } from "./config.server";
+import { initializeAdministrator } from "./administrator.server";
+import { CONFIG, DATABASE } from "./config.server";
 import { logger } from "./logger.server";
 import { readLoginForm } from "./login-form.server";
 import { verifyPassword } from "./password.server";
 
-const config = loadAuthConfig();
-function loadAuthConfig() {
+const config = await loadAuthConfig();
+async function loadAuthConfig() {
 	try {
-		const settings = readAuthConfig(process.env, import.meta.env.PROD);
-		logger[settings ? "info" : "warn"](
-			{
-				component: "auth",
-				configured: !!settings,
-				secureCookie: settings?.secure,
-			},
-			settings
-				? "Authentication configured"
-				: "Authentication configuration missing",
+		const credentials = await initializeAdministrator(DATABASE);
+		const settings = { ...credentials, secure: import.meta.env.PROD };
+		logger.info(
+			{ component: "auth", secureCookie: settings.secure },
+			"Authentication configured",
 		);
 		return settings;
-	} catch (err) {
-		logger.fatal(
-			{ component: "auth", err },
-			"Authentication configuration invalid",
+	} catch {
+		logger.fatal({ component: "auth" }, "Authentication configuration invalid");
+		throw new Error(
+			"Authentication initialization failed; check state database permissions, or stop the application and run npm run auth:reset",
 		);
-		throw err;
 	}
 }
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
@@ -177,12 +171,7 @@ export function assertAuthOrigin(request: Request) {
 		});
 	}
 }
-const configuredAuth = config ? createAuth(config) : undefined;
+const configuredAuth = createAuth(config);
 export function getAuth() {
-	if (!configuredAuth)
-		throw new Response(
-			"请先配置 ADMIN_USERNAME、ADMIN_PASSWORD_HASH 和 SESSION_SECRET。",
-			{ status: 503, headers: { "Cache-Control": "no-store" } },
-		);
 	return configuredAuth;
 }

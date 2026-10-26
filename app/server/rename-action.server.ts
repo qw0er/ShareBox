@@ -69,5 +69,12 @@ export async function handleRenameAction({
 		{ operation: "rename", relativePath, newName },
 		"File entry renamed",
 	);
-	return { success: true };
+	return {
+		success: true,
+		change: {
+			kind: "rename",
+			fromPath: relativePath,
+			toPath: path.posix.join(path.posix.dirname(relativePath), newName),
+		},
+	};
 }

@@ -1,28 +1,25 @@
-import {
-	afterAll,
-	afterEach,
-	beforeAll,
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
-import { readAuthConfig } from "../server/auth-config.server";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	hashPassword,
 	isPasswordHash,
 	verifyPassword,
 } from "../server/password.server";
 
-vi.mock("../server/config.server", () => ({ CONFIG: { adminHost: "" } }));
+vi.mock("../server/administrator.server", () => ({
+	initializeAdministrator: vi.fn(async () => ({
+		username: "admin",
+		passwordHash: "unused",
+		secret: "test-secret-at-least-32-characters-long",
+	})),
+}));
+vi.mock("../server/config.server", () => ({
+	CONFIG: { adminHost: "" },
+	DATABASE: {},
+}));
 vi.mock("../server/logger.server", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../server/logger.server")>()),
 	logger: { debug: vi.fn(), fatal: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
-vi.stubEnv("ADMIN_USERNAME", undefined);
-vi.stubEnv("ADMIN_PASSWORD_HASH", undefined);
-vi.stubEnv("SESSION_SECRET", undefined);
-afterAll(() => vi.unstubAllEnvs());
 const { createAuth, getAuth } = await import("../server/auth.server");
 let passwordHash: string;
 beforeAll(async () => {
@@ -78,45 +75,10 @@ describe("scrypt credentials and configuration", () => {
 		expect(await verifyPassword("test-password", "invalid")).toBe(false);
 		expect(await verifyPassword("x".repeat(1025), passwordHash)).toBe(false);
 	});
-	it("requires complete valid configuration in production and rejects partial development configuration", () => {
-		expect(() => readAuthConfig({}, true)).toThrow("Configure");
-		expect(readAuthConfig({}, false)).toBeUndefined();
-		expect(() => readAuthConfig({ ADMIN_USERNAME: "admin" }, false)).toThrow(
-			"Configure",
-		);
-		expect(() =>
-			readAuthConfig(
-				{
-					ADMIN_USERNAME: "admin",
-					ADMIN_PASSWORD_HASH: passwordHash,
-					SESSION_SECRET: "short",
-				},
-				true,
-			),
-		).toThrow("Configure");
-		expect(() =>
-			readAuthConfig(
-				{
-					ADMIN_USERNAME: "admin",
-					ADMIN_PASSWORD_HASH: "invalid",
-					SESSION_SECRET: settings().secret,
-				},
-				true,
-			),
-		).toThrow("Configure");
-		expect(
-			readAuthConfig(
-				{
-					ADMIN_USERNAME: "admin",
-					ADMIN_PASSWORD_HASH: passwordHash,
-					SESSION_SECRET: settings().secret,
-				},
-				true,
-			)?.secure,
-		).toBe(true);
-	});
-	it("never bypasses authentication when development credentials are missing", () => {
-		expect(getAuth).toThrow();
+	it("keeps management authenticated when credentials are initialized automatically", async () => {
+		await expect(getAuth().requireAdmin(request())).rejects.toMatchObject({
+			status: 401,
+		});
 	});
 });
 

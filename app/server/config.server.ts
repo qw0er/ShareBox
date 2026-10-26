@@ -1,4 +1,6 @@
+import path from "node:path";
 import { userDataDir } from "platformdirs";
+import { openDatabase } from "./db/client.server";
 import { LOGGER_LEVEL, logger } from "./logger.server";
 import { initializeStorage } from "./storage.server";
 
@@ -8,7 +10,10 @@ const storage = initializeStorage(
 	process.env.STATE_DIR || userDataDir("sharebox", false),
 );
 
+export const DATABASE = openDatabase(path.join(storage.stateDir, "state.db"));
+
 export const CONFIG = {
+	dbPath: path.join(storage.stateDir, "state.db"),
 	filesDir: storage.filesDir,
 	stagingDir: storage.stagingDir,
 	loggerLevel: LOGGER_LEVEL,

@@ -27,8 +27,11 @@ COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=production-dependencies /app/package.json ./package.json
 COPY --from=build /app/build ./build
 COPY packages/server.mjs ./packages/server.mjs
-COPY scripts/hash-password.mjs ./scripts/hash-password.mjs
+COPY scripts/reset-password.mjs ./scripts/reset-password.mjs
+COPY app/server/administrator.server.ts app/server/logger.server.ts ./app/server/
+COPY app/server/db ./app/server/db
 COPY scripts/migrate-state.mjs ./scripts/migrate-state.mjs
+COPY drizzle ./drizzle
 COPY app/server/password.server.ts ./app/server/password.server.ts
 RUN mkdir -p /var/lib/sharebox && chown node:node /var/lib/sharebox
 USER node

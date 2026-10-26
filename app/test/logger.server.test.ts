@@ -204,3 +204,18 @@ it("detaches background jobs from the triggering request", async () => {
 		records.find((record) => record.msg === "Request continues")?.requestId,
 	).toEqual(expect.any(String));
 });
+
+it("redacts share tokens from request and nested log contexts", async () => {
+	const token = "a".repeat(32);
+	await withRequestLogging(
+		new Request(`http://localhost/s/${token}?path=secret`),
+		"shares.download",
+		() => {
+			logger.info("Downloading shared file");
+		},
+	);
+	expect(records.length).toBeGreaterThan(0);
+	expect(records.every((record) => record.path === "/s/[shareId]")).toBe(true);
+	expect(JSON.stringify(records)).not.toContain(token);
+	expect(JSON.stringify(records)).not.toContain("secret");
+});

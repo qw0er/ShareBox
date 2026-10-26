@@ -1,6 +1,10 @@
 import ChevronRight from "@mui/icons-material/ChevronRight";
+import DeleteOutlined from "@mui/icons-material/DeleteOutlined";
 import DownloadOutlined from "@mui/icons-material/DownloadOutlined";
+import DriveFileRenameOutlineOutlined from "@mui/icons-material/DriveFileRenameOutlineOutlined";
+import ShareOutlined from "@mui/icons-material/ShareOutlined";
 import {
+	Alert,
 	Box,
 	ButtonBase,
 	IconButton,
@@ -11,12 +15,13 @@ import {
 import { useState } from "react";
 import { Link } from "react-router";
 import type { FileNode } from "~/types/files";
+import type { ShareSummary } from "~/types/shares";
 import { privateDownloadUrl } from "~/utils/download-links";
 import { formatSize } from "~/utils/file-format";
-import DeleteFileButton from "./DeleteFileButton";
+import DeleteFileDialog from "./DeleteFileDialog";
 import DirectoryBrowser from "./DirectoryBrowser";
 import { FileEntryContent, fileEntryButtonSx } from "./FileEntryRow";
-import RenameButton from "./RenameButton";
+import RenameDialog from "./RenameDialog";
 
 function resolveDirectory(tree: FileNode[], path: string) {
 	let entries = tree;
@@ -35,9 +40,17 @@ function resolveDirectory(tree: FileNode[], path: string) {
 function ManagedEntry({
 	node,
 	onNavigate,
+	onShare,
+	onRename,
+	onRemove,
+	shared,
 }: {
 	node: FileNode;
 	onNavigate: (path: string) => void;
+	onShare: (path: string) => void;
+	onRename: (node: FileNode) => void;
+	onRemove: (node: FileNode) => void;
+	shared: boolean;
 }) {
 	const directory = node.type === "directory";
 	return (
@@ -95,27 +108,97 @@ function ManagedEntry({
 						</IconButton>
 					</Tooltip>
 				)}
-				<RenameButton node={node} />
-				<DeleteFileButton node={node} />
+				{!directory && (
+					<Tooltip title={shared ? "管理分享" : "分享"}>
+						<IconButton
+							size="small"
+							aria-label={`${shared ? "管理分享" : "分享"} ${node.name}`}
+							onClick={() => onShare(node.path)}
+						>
+							<ShareOutlined fontSize="small" />
+						</IconButton>
+					</Tooltip>
+				)}
+				<Tooltip title="重命名">
+					<IconButton
+						size="small"
+						aria-label={`重命名 ${node.name}`}
+						onClick={() => onRename(node)}
+					>
+						<DriveFileRenameOutlineOutlined fontSize="small" />
+					</IconButton>
+				</Tooltip>
+				<Tooltip title="删除">
+					<IconButton
+						size="small"
+						aria-label={`删除 ${node.name}`}
+						onClick={() => onRemove(node)}
+					>
+						<DeleteOutlined fontSize="small" />
+					</IconButton>
+				</Tooltip>
 			</Stack>
 		</Stack>
 	);
 }
 
-export default function FileBrowser({ fileTree }: { fileTree: FileNode[] }) {
+export default function FileBrowser({
+	fileTree,
+	shares,
+	onShare,
+}: {
+	fileTree: FileNode[];
+	shares: ShareSummary[];
+	onShare: (path: string) => void;
+}) {
+	const [renameTarget, setRenameTarget] = useState<FileNode | null>(null);
+	const [removeTarget, setRemoveTarget] = useState<FileNode | null>(null);
+	const [warning, setWarning] = useState<string | null>(null);
 	const [requestedPath, setPath] = useState("");
 	const { path, entries } = resolveDirectory(fileTree, requestedPath);
 	return (
 		<Box>
+			{warning && (
+				<Alert
+					severity="warning"
+					onClose={() => setWarning(null)}
+					sx={{ mb: 2 }}
+				>
+					{warning}
+				</Alert>
+			)}
 			<DirectoryBrowser
 				key={path}
 				path={path}
 				entries={entries}
 				onNavigate={setPath}
 				renderEntry={(node) => (
-					<ManagedEntry node={node} onNavigate={setPath} />
+					<ManagedEntry
+						node={node}
+						onNavigate={setPath}
+						onShare={onShare}
+						shared={shares.some((share) => share.targetPath === node.path)}
+						onRename={setRenameTarget}
+						onRemove={setRemoveTarget}
+					/>
 				)}
 			/>
+			{renameTarget && (
+				<RenameDialog
+					key={renameTarget.path}
+					node={renameTarget}
+					onClose={() => setRenameTarget(null)}
+					onWarning={setWarning}
+				/>
+			)}
+			{removeTarget && (
+				<DeleteFileDialog
+					key={removeTarget.path}
+					node={removeTarget}
+					onClose={() => setRemoveTarget(null)}
+					onWarning={setWarning}
+				/>
+			)}
 		</Box>
 	);
 }

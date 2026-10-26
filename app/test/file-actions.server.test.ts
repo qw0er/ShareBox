@@ -83,7 +83,10 @@ describe("file actions", () => {
 		const form = new FormData();
 		form.set("path", "remove.txt");
 
-		await expect(submitRemove(form)).resolves.toEqual({ success: true });
+		await expect(submitRemove(form)).resolves.toEqual({
+			success: true,
+			change: { kind: "remove", path: "remove.txt" },
+		});
 		await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
@@ -137,7 +140,10 @@ describe("file actions", () => {
 		const form = new FormData();
 		form.set("path", "old.txt");
 		form.set("newName", "new.txt");
-		expect(await submitRename(form)).toEqual({ success: true });
+		expect(await submitRename(form)).toEqual({
+			success: true,
+			change: { kind: "rename", fromPath: "old.txt", toPath: "new.txt" },
+		});
 		expect(await readFile(path.join(CONFIG.filesDir, "new.txt"), "utf8")).toBe(
 			"contents",
 		);

@@ -1,9 +1,15 @@
+import type {
+	DetailedError,
+	HttpRequest,
+	HttpResponse,
+	UploadOptions,
+} from "tus-js-client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const clients = vi.hoisted(
 	() =>
 		[] as {
-			options: Record<string, any>;
+			options: ReturnType<typeof requireQueueCallbacks>;
 			start: ReturnType<typeof vi.fn>;
 			abort: ReturnType<typeof vi.fn>;
 			url: string | null;
@@ -15,14 +21,69 @@ vi.mock("tus-js-client", () => ({
 		start = vi.fn();
 		abort = vi.fn(async () => {});
 		url = null;
-		constructor(_file: File, options: Record<string, any>) {
-			this.options = options;
+		constructor(_file: File, options: UploadOptions) {
+			this.options = requireQueueCallbacks(options);
 			clients.push(this);
 		}
 	},
 }));
 
 import { UploadQueue } from "../components/upload/upload-queue";
+
+function requireQueueCallbacks(options: UploadOptions) {
+	const { onProgress, onAfterResponse, onError, onSuccess, onShouldRetry } =
+		options;
+	if (
+		!onProgress ||
+		!onAfterResponse ||
+		!onError ||
+		!onSuccess ||
+		!onShouldRetry
+	) {
+		throw new Error("Upload queue did not provide its required tus callbacks");
+	}
+	return {
+		...options,
+		onProgress,
+		onAfterResponse,
+		onError,
+		onSuccess,
+		onShouldRetry,
+	};
+}
+
+function mockResponse(status: number, location?: string): HttpResponse {
+	return {
+		getStatus: () => status,
+		getHeader: () => location,
+		getBody: () => "",
+		getUnderlyingObject: () => null,
+	};
+}
+
+function mockRequest(method: string): HttpRequest {
+	const headers = new Map<string, string>();
+	return {
+		getMethod: () => method,
+		getURL: () => url,
+		setHeader: (key, value) => {
+			headers.set(key, value);
+		},
+		getHeader: (key) => headers.get(key),
+		setProgressHandler: () => {},
+		send: async () => mockResponse(200),
+		abort: async () => {},
+		getUnderlyingObject: () => null,
+	};
+}
+
+function retryError(status: number): DetailedError {
+	return Object.assign(new Error("Upload failed"), {
+		originalRequest: mockRequest("HEAD"),
+		originalResponse: mockResponse(status),
+		causingError: null,
+	});
+}
 
 const url = "http://localhost/uploads/0123456789abcdef0123456789abcdef";
 let queue: UploadQueue;
@@ -63,8 +124,8 @@ it("waits for tus success after 100% progress and retries errors through tus", a
 	const id = queue.tasks[0].id;
 	await queue.start(id, 100);
 	clients[0].options.onAfterResponse(
-		{ getMethod: () => "POST" },
-		{ getHeader: () => url, getStatus: () => 201 },
+		mockRequest("POST"),
+		mockResponse(201, url),
 	);
 	clients[0].options.onProgress(5, 5);
 	expect(queue.tasks[0].status).toBe("uploading");
@@ -73,7 +134,7 @@ it("waits for tus success after 100% progress and retries errors through tus", a
 	expect(queue.tasks[0].status).toBe("error");
 	await queue.start(id, 100);
 	expect(clients[0].start).toHaveBeenCalledTimes(2);
-	clients[0].options.onSuccess();
+	clients[0].options.onSuccess({ lastResponse: mockResponse(204) });
 	expect(queue.tasks[0]).toMatchObject({ status: "complete", bytes: 5 });
 	expect(onComplete).toHaveBeenCalledTimes(1);
 	expect(fetch).not.toHaveBeenCalled();
@@ -82,8 +143,8 @@ it("keeps a task when DELETE fails and removes it only after confirmed terminati
 	const id = queue.tasks[0].id;
 	await queue.start(id, 100);
 	clients[0].options.onAfterResponse(
-		{ getMethod: () => "POST" },
-		{ getHeader: () => url, getStatus: () => 201 },
+		mockRequest("POST"),
+		mockResponse(201, url),
 	);
 	vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 500 }));
 	await queue.remove(id);
@@ -99,8 +160,8 @@ it("keeps a task when DELETE fails and removes it only after confirmed terminati
 it("restores a paused task and resumes after reselecting its local file", async () => {
 	await queue.start(queue.tasks[0].id, 100);
 	clients[0].options.onAfterResponse(
-		{ getMethod: () => "POST" },
-		{ getHeader: () => url, getStatus: () => 201 },
+		mockRequest("POST"),
+		mockResponse(201, url),
 	);
 	queue.dispose();
 	queue = new UploadQueue(onComplete);
@@ -170,7 +231,7 @@ it("restores legacy publication tasks as ordinary resumable uploads", async () =
 	queue.add([new File(["hello"], "test.txt", { lastModified: 1 })], 100);
 	await queue.start("legacy", 100);
 	expect(clients[0].options.uploadUrl).toBe(url);
-	clients[0].options.onSuccess();
+	clients[0].options.onSuccess({ lastResponse: mockResponse(204) });
 	expect(queue.tasks[0].status).toBe("complete");
 });
 
@@ -178,25 +239,13 @@ it("prevents tus from replacing an upload after a failed completion HEAD", async
 	await queue.start(queue.tasks[0].id, 100);
 	const callback = clients[0].options.onAfterResponse;
 	for (const status of [409, 423, 500]) {
-		expect(() =>
-			callback(
-				{ getMethod: () => "HEAD" },
-				{
-					getStatus: () => status,
-					getHeader: () => null,
-				},
-			),
-		).toThrow("无法确认上传完成");
+		expect(() => callback(mockRequest("HEAD"), mockResponse(status))).toThrow(
+			"无法确认上传完成",
+		);
 	}
 	for (const status of [200, 404, 410]) {
 		expect(() =>
-			callback(
-				{ getMethod: () => "HEAD" },
-				{
-					getStatus: () => status,
-					getHeader: () => null,
-				},
-			),
+			callback(mockRequest("HEAD"), mockResponse(status)),
 		).not.toThrow();
 	}
 });
@@ -209,7 +258,7 @@ it("keeps the snapshot callback bound when React calls it independently", () => 
 it("ignores a late success callback after disposal", async () => {
 	await queue.start(queue.tasks[0].id, 100);
 	queue.dispose();
-	clients[0].options.onSuccess();
+	clients[0].options.onSuccess({ lastResponse: mockResponse(204) });
 	expect(onComplete).not.toHaveBeenCalled();
 	expect(queue.tasks[0].status).not.toBe("complete");
 });
@@ -217,25 +266,13 @@ it("ignores a late success callback after disposal", async () => {
 it("stops retrying expired authentication and preserves upload state", async () => {
 	await queue.start(queue.tasks[0].id, 100);
 	const options = clients[0].options;
-	expect(
-		options.onShouldRetry({ originalResponse: { getStatus: () => 401 } }),
-	).toBe(false);
-	expect(
-		options.onShouldRetry({ originalResponse: { getStatus: () => 403 } }),
-	).toBe(false);
-	expect(
-		options.onShouldRetry({ originalResponse: { getStatus: () => 500 } }),
-	).toBe(true);
-	options.onAfterResponse(
-		{ getMethod: () => "POST" },
-		{ getStatus: () => 201, getHeader: () => url },
-	);
+	expect(options.onShouldRetry(retryError(401), 0, options)).toBe(false);
+	expect(options.onShouldRetry(retryError(403), 0, options)).toBe(false);
+	expect(options.onShouldRetry(retryError(500), 0, options)).toBe(true);
+	options.onAfterResponse(mockRequest("POST"), mockResponse(201, url));
 	options.onProgress(2, 5);
 	expect(() =>
-		options.onAfterResponse(
-			{ getMethod: () => "HEAD" },
-			{ getStatus: () => 401 },
-		),
+		options.onAfterResponse(mockRequest("HEAD"), mockResponse(401)),
 	).toThrow("登录已过期");
 	options.onError(new Error("登录已过期，请重新登录后继续上传。"));
 	expect(queue.tasks[0]).toMatchObject({
@@ -252,16 +289,16 @@ it("does not retry a tus error wrapping an expired-session response", async () =
 	await queue.start(queue.tasks[0].id, 100);
 	const options = clients[0].options;
 	try {
-		options.onAfterResponse(
-			{ getMethod: () => "PATCH" },
-			{ getStatus: () => 401 },
-		);
+		options.onAfterResponse(mockRequest("PATCH"), mockResponse(401));
 		throw new Error("Expected session expiry");
 	} catch (error) {
+		if (!(error instanceof Error)) throw error;
 		const wrapped = Object.assign(new Error("tus failed"), {
+			originalRequest: mockRequest("PATCH"),
+			originalResponse: null,
 			causingError: error,
 		});
-		expect(options.onShouldRetry(wrapped)).toBe(false);
+		expect(options.onShouldRetry(wrapped, 0, options)).toBe(false);
 		options.onError(wrapped);
 		expect(queue.tasks[0].error).toBe("登录已过期，请重新登录后继续上传。");
 	}

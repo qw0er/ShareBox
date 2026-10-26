@@ -5,7 +5,13 @@ export type FileActionContext = {
 	requestLogger: Logger;
 };
 
+export type FileChange =
+	| { kind: "remove"; path: string }
+	| { kind: "rename"; fromPath: string; toPath: string };
+
 export type FileActionResult = {
+	change?: FileChange;
+	warning?: string;
 	success?: true;
 	error?: string;
 };

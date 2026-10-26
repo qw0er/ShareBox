@@ -1,10 +1,16 @@
+import { Stack } from "@mui/material";
+import { useState } from "react";
 import FileBrowser from "~/components/files/FileBrowser";
 import WorkspaceLayout from "~/components/layout/WorkspaceLayout";
+import ShareDialog from "~/components/shares/ShareDialog";
+import SharesPanel from "~/components/shares/SharesPanel";
 import UploadPanel from "~/components/upload/UploadPanel";
 import { getAuth } from "~/server/auth.server";
 import { CONFIG } from "~/server/config.server";
 import { getFileTree } from "~/server/files/repository.server";
 import { logger, withRequestLogging } from "~/server/logger.server";
+import { shareStore } from "~/server/shares/runtime.server";
+import { listShares } from "~/server/shares/service.server";
 import type { Route } from "./+types/home";
 
 export function meta() {
@@ -18,7 +24,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 		await getAuth().requireAdmin(request, true);
 		const startedAt = Date.now();
 		try {
-			const fileTree = await getFileTree(CONFIG.filesDir);
+			const [fileTree, shares] = await Promise.all([
+				getFileTree(CONFIG.filesDir),
+				listShares(shareStore, CONFIG.filesDir),
+			]);
 			logger.debug(
 				{
 					component: "file-browser",
@@ -29,6 +38,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 			);
 			return {
 				fileTree,
+				shares,
 				maxUploadBytes: CONFIG.maxUploadBytes,
 			};
 		} catch (error) {
@@ -45,10 +55,28 @@ export async function loader({ request }: Route.LoaderArgs) {
 	});
 }
 export default function Home({ loaderData }: Route.ComponentProps) {
+	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	return (
 		<WorkspaceLayout>
-			<FileBrowser fileTree={loaderData.fileTree} />
-			<UploadPanel maxUploadBytes={loaderData.maxUploadBytes} />
+			<FileBrowser
+				fileTree={loaderData.fileTree}
+				shares={loaderData.shares}
+				onShare={setSelectedPath}
+			/>
+			<Stack spacing={3}>
+				<UploadPanel maxUploadBytes={loaderData.maxUploadBytes} />
+				<SharesPanel shares={loaderData.shares} onManage={setSelectedPath} />
+			</Stack>
+			{selectedPath !== null && (
+				<ShareDialog
+					key={selectedPath}
+					path={selectedPath}
+					share={loaderData.shares.find(
+						(share) => share.targetPath === selectedPath,
+					)}
+					onClose={() => setSelectedPath(null)}
+				/>
+			)}
 		</WorkspaceLayout>
 	);
 }

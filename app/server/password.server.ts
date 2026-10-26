@@ -26,3 +26,12 @@ function deriveKey(password: string, salt: string): Promise<Buffer> {
 		});
 	});
 }
+
+export async function generateCredentials() {
+	const password = randomBytes(24).toString("base64url");
+	return {
+		password,
+		passwordHash: await hashPassword(password),
+		secret: randomBytes(32).toString("hex"),
+	};
+}

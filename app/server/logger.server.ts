@@ -18,7 +18,10 @@ export function requestLogContext(request: Request) {
 		context = {
 			requestId: randomUUID(),
 			method: request.method,
-			path: new URL(request.url).pathname,
+			path: new URL(request.url).pathname.replace(
+				/^\/s\/[^/]+/,
+				"/s/[shareId]",
+			),
 		};
 		contexts.set(request, context);
 	}

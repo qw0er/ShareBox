@@ -132,6 +132,7 @@ export async function deliverFile(
 	relativePath: string,
 	request: Request,
 	component = "download",
+	expectedIdentity?: { targetDev: string; targetIno: string },
 ): Promise<Response> {
 	const { targetPath, targetStats } = await resolveEntry(rootDir, relativePath);
 	if (!targetStats.isFile()) throw new Response("文件不存在", { status: 404 });
@@ -142,6 +143,15 @@ export async function deliverFile(
 		constants.O_RDONLY | constants.O_NOFOLLOW,
 	);
 	try {
+		if (expectedIdentity) {
+			const identity = await file.stat({ bigint: true });
+			if (
+				identity.dev.toString() !== expectedIdentity.targetDev ||
+				identity.ino.toString() !== expectedIdentity.targetIno
+			) {
+				throw new Response("文件不存在", { status: 404 });
+			}
+		}
 		const current = await file.stat();
 		if (!current.isFile()) throw new Response("文件不存在", { status: 404 });
 		const lastModified = current.mtime.toUTCString();

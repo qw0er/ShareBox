@@ -1,12 +1,28 @@
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { hashPassword } from "../server/password.server";
 
+const credentials = vi.hoisted(() => ({
+	username: "admin",
+	passwordHash: "",
+	secret: "route-test-secret-at-least-32-bytes",
+}));
+vi.mock("../server/administrator.server", () => ({
+	initializeAdministrator: async () => credentials,
+}));
 vi.mock("../server/config.server", () => ({
+	DATABASE: {},
 	CONFIG: {
 		adminHost: "",
 		filesDir: "/unused",
 		stagingDir: "/unused",
 		maxUploadBytes: 100,
+	},
+}));
+vi.mock("../server/shares/runtime.server", () => ({
+	shareStore: {
+		list: vi.fn(() => []),
+		renamePaths: vi.fn(),
+		removePaths: vi.fn(),
 	},
 }));
 vi.mock("../server/logger.server", async (importOriginal) => {
@@ -48,9 +64,7 @@ let filesRemove: typeof import("../routes/files-remove");
 let filesRename: typeof import("../routes/files-rename");
 let auth: ReturnType<typeof import("../server/auth.server").getAuth>;
 beforeAll(async () => {
-	vi.stubEnv("ADMIN_USERNAME", "admin");
-	vi.stubEnv("ADMIN_PASSWORD_HASH", await hashPassword("route-password"));
-	vi.stubEnv("SESSION_SECRET", "route-test-secret-at-least-32-bytes");
+	credentials.passwordHash = await hashPassword("route-password");
 	home = await import("../routes/home");
 	uploads = await import("../routes/uploads");
 	download = await import("../routes/download");

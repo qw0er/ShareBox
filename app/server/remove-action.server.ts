@@ -31,7 +31,7 @@ export async function handleRemoveAction({
 			{ operation: "remove", relativePath },
 			"File entry removed",
 		);
-		return { success: true };
+		return { success: true, change: { kind: "remove", path: relativePath } };
 	} catch (error) {
 		requestLogger[fileOperationLevel(error)](
 			{ err: error, operation: "remove", relativePath },
