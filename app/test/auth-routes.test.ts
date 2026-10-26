@@ -2,7 +2,12 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { hashPassword } from "../server/password.server";
 
 vi.mock("../server/config.server", () => ({
-	CONFIG: { adminHost: "", datadir: "/unused", maxUploadBytes: 100 },
+	CONFIG: {
+		adminHost: "",
+		filesDir: "/unused",
+		stagingDir: "/unused",
+		maxUploadBytes: 100,
+	},
 }));
 vi.mock("../server/logger.server", async (importOriginal) => {
 	const logger = {
@@ -19,8 +24,11 @@ vi.mock("../server/logger.server", async (importOriginal) => {
 		logger,
 	};
 });
-vi.mock("../server/read-files.server", () => ({
+vi.mock("../server/files/repository.server", () => ({
 	getFileTree: vi.fn(async () => []),
+}));
+vi.mock("../server/files/delivery.server", () => ({
+	downloadRequestedFile: vi.fn(async () => new Response("file")),
 }));
 vi.mock("../server/remove-action.server", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../server/remove-action.server")>()),
@@ -35,6 +43,7 @@ vi.mock("../server/tus.server", () => ({
 }));
 let home: typeof import("../routes/home");
 let uploads: typeof import("../routes/uploads");
+let download: typeof import("../routes/download");
 let filesRemove: typeof import("../routes/files-remove");
 let filesRename: typeof import("../routes/files-rename");
 let auth: ReturnType<typeof import("../server/auth.server").getAuth>;
@@ -44,6 +53,7 @@ beforeAll(async () => {
 	vi.stubEnv("SESSION_SECRET", "route-test-secret-at-least-32-bytes");
 	home = await import("../routes/home");
 	uploads = await import("../routes/uploads");
+	download = await import("../routes/download");
 	filesRemove = await import("../routes/files-remove");
 	filesRename = await import("../routes/files-rename");
 	auth = (await import("../server/auth.server")).getAuth();
@@ -61,13 +71,24 @@ function removeActionArgs(request: Request) {
 function renameActionArgs(request: Request) {
 	return { request } as Parameters<typeof filesRename.action>[0];
 }
-it("guards home loader and file action routes before reading or mutating files", async () => {
-	const { getFileTree } = await import("../server/read-files.server");
+function downloadArgs(request: Request) {
+	return { request } as Parameters<typeof download.loader>[0];
+}
+it("guards home, download and file action routes before reading or mutating files", async () => {
+	const { getFileTree } = await import("../server/files/repository.server");
+	const { downloadRequestedFile } = await import(
+		"../server/files/delivery.server"
+	);
 	const { handleRemoveAction } = await import("../server/remove-action.server");
 	const { handleRenameAction } = await import("../server/rename-action.server");
 	await expect(
 		home.loader(args(new Request("http://localhost/"))),
 	).rejects.toMatchObject({ status: 302 });
+	await expect(
+		download.loader(
+			downloadArgs(new Request("http://localhost/download?path=secret.txt")),
+		),
+	).rejects.toMatchObject({ status: 401 });
 	await expect(
 		filesRemove.action(
 			removeActionArgs(
@@ -83,6 +104,7 @@ it("guards home loader and file action routes before reading or mutating files",
 		),
 	).rejects.toMatchObject({ status: 401 });
 	expect(getFileTree).not.toHaveBeenCalled();
+	expect(downloadRequestedFile).not.toHaveBeenCalled();
 	expect(handleRemoveAction).not.toHaveBeenCalled();
 	expect(handleRenameAction).not.toHaveBeenCalled();
 });
@@ -120,6 +142,18 @@ it("passes authenticated management and tus requests to their existing handlers"
 			args(new Request("http://localhost/", { headers: { Cookie: cookie } })),
 		),
 	).toMatchObject({ fileTree: [] });
+	const downloadResponse = await download.loader(
+		downloadArgs(
+			new Request("http://localhost/download?path=missing.txt", {
+				headers: { Cookie: cookie },
+			}),
+		),
+	);
+	expect(downloadResponse.status).toBe(200);
+	const { downloadRequestedFile } = await import(
+		"../server/files/delivery.server"
+	);
+	expect(downloadRequestedFile).toHaveBeenCalledOnce();
 	const actionHeaders = { Cookie: cookie, Origin: "http://localhost" };
 	expect(
 		await filesRemove.action(

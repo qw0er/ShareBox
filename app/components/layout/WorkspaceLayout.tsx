@@ -1,6 +1,5 @@
 import Inventory2Outlined from "@mui/icons-material/Inventory2Outlined";
 import LogoutOutlined from "@mui/icons-material/LogoutOutlined";
-import OpenInNew from "@mui/icons-material/OpenInNew";
 import {
 	AppBar,
 	Box,
@@ -54,16 +53,6 @@ export default function WorkspaceLayout({
 							ShareBox
 						</Typography>
 						<Box sx={{ flex: 1 }} />
-						<Button
-							component="a"
-							href="/public"
-							target="_blank"
-							rel="noopener noreferrer"
-							startIcon={<OpenInNew />}
-							size="small"
-						>
-							公开页
-						</Button>
 						<Chip label="管理工作区" size="small" variant="outlined" />
 						<Form method="post" action="/logout">
 							<Button

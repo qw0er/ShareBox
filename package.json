@@ -11,7 +11,8 @@
 		"typecheck": "react-router typegen && tsc",
 		"lint": "biome lint .",
 		"check": "biome check . --write",
-		"auth:hash": "node scripts/hash-password.mjs"
+		"auth:hash": "node scripts/hash-password.mjs",
+		"migrate:state": "node scripts/migrate-state.mjs"
 	},
 	"dependencies": {
 		"@emotion/react": "^11.14.0",

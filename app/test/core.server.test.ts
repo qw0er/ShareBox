@@ -12,7 +12,7 @@ import path from "node:path";
 
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { getFileTree } from "../server/read-files.server";
+import { getFileTree } from "../server/files/repository.server";
 
 const initialState = await mkdtemp(
 	path.join(os.tmpdir(), "sharebox-core-state-"),
@@ -103,14 +103,17 @@ describe("file system core", () => {
 		).resolves.toBe("content");
 	});
 
-	it.each(["", "../outside.txt", "/tmp/outside.txt", "folder/../file.txt"])(
-		"rejects invalid path %j",
-		async (relativePath) => {
-			await expect(removeFileEntry(rootDir, relativePath)).rejects.toThrow(
-				"Invalid file path",
-			);
-		},
-	);
+	it.each([
+		"",
+		"../outside.txt",
+		"/tmp/outside.txt",
+		"folder/../file.txt",
+		"folder\\file.txt",
+	])("rejects invalid path %j", async (relativePath) => {
+		await expect(removeFileEntry(rootDir, relativePath)).rejects.toThrow(
+			"Invalid file path",
+		);
+	});
 
 	it("does not follow a symbolic link while removing", async () => {
 		const targetPath = path.join(rootDir, "target.txt");

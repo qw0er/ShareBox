@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { FileNode } from "~/types/files";
-import { checkRootDirectory, isNotFoundError } from "./utils.server";
+import { isNotFoundError } from "../utils.server";
+import { checkRootDirectory } from "./paths.server";
 
 export async function getFileTree(dirPath: string): Promise<FileNode[]> {
 	const rootPath = path.resolve(dirPath);
@@ -25,7 +26,7 @@ async function readFileTree(
 			try {
 				const stats = await fs.lstat(fullPath);
 
-				// Do not expose links or follow links outside the configured data tree.
+				// Do not expose links or follow links outside the configured file tree.
 				if (stats.isSymbolicLink()) {
 					return null;
 				}

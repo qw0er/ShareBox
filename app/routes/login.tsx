@@ -9,7 +9,7 @@ import {
 	TextField,
 	Typography,
 } from "@mui/material";
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { Form, redirect, useNavigation } from "react-router";
 import ThemeModeButton from "~/components/layout/ThemeModeButton";
 import { getAuth } from "~/server/auth.server";
 import { withRequestLogging } from "~/server/logger.server";
@@ -77,9 +77,6 @@ export default function Login({ actionData }: Route.ComponentProps) {
 						/>
 						<Button type="submit" variant="contained" disabled={busy}>
 							{busy ? "登录中…" : "登录"}
-						</Button>
-						<Button component={Link} to="/public">
-							浏览公开文件
 						</Button>
 					</Stack>
 				</Paper>

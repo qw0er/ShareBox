@@ -4,17 +4,16 @@ ShareBox 定位为个人服务器上的统一文件中转、管理与分发平�
 
 目标是以模块化单体提供统一入口：Sharing 管理公开分享，Transfer 支持设备经服务器上传和下载，Acquisition 管理远程获取。文件保存在统一文件空间中，默认私有，只有显式分享的目录允许匿名访问；分享引用原文件，无需复制一份公开副本。
 
-**当前实现仍是公开文件管理工具**：网页上传、浏览和删除文件，应用提供登录认证及 `/public` 匿名目录浏览与下载。默认私有、目录分享、SQLite 和 HTTP/HTTPS 代下载均待实现，当前 `data/` 中的文件仍全部公开。产品目标、验收标准和实施顺序见 [项目需求](docs/requirements.md)，实现与目标边界见 [架构设计](docs/architecture.md)。
+**当前实现是私有文件空间的基础版本**：网页上传、浏览、重命名和删除文件，管理员可在任意设备登录后下载文件，所有文件默认私有；`/public` 匿名入口已移除。单文件分享链接、目录分享、SQLite 分享规则和 HTTP/HTTPS 代下载待后续实现。产品目标、验收标准和实施顺序见 [项目需求](docs/requirements.md)，实现与目标边界见 [架构设计](docs/architecture.md)。
 
 ## 当前版本功能
 
 - **文件管理**：浏览目录树，上传、重命名和删除文件；支持删除空目录，同名文件不覆盖。
 - **断点上传**：多文件选择和拖放，显示进度，支持暂停、继续、失败重试和取消；默认每个文件最多 10 GiB，同时上传最多 2 个。
-- **公开下载**：在 `/public` 浏览目录，按名称筛选、排序和刷新；点击文件整行下载，点击目录整行查看。
-- **下载链接**：管理页提供公开页入口，可为文件生成并复制完整下载地址；下载支持 HEAD 和单段 Range。
-- **访问控制**：同一个 HTTPS 域名，管理端使用应用内登录与签名 Cookie 会话保护，公开页和下载入口无需认证。
+- **私有下载**：管理员点击文件行或下载按钮获取文件，支持 HEAD 和单段 Range；可在另一台设备登录后下载同一文件。
+- **访问控制**：同一个 HTTPS 域名，管理页、下载和上传全部要求应用内登录；不再提供匿名公开入口。
 
-面向单服务器和单个管理员凭据。文件系统是文件列表的唯一数据来源，配置与临时上传数据不对外公开。详细需求和实现见 [项目需求](docs/requirements.md) 与 [架构设计](docs/architecture.md)。
+面向单服务器和单个管理员凭据。文件系统是文件列表的唯一数据来源，配置、上传暂存和分享元数据不对外公开。详细需求和实现见 [项目需求](docs/requirements.md) 与 [架构设计](docs/architecture.md)。
 
 ## 使用方法
 
@@ -22,14 +21,14 @@ ShareBox 定位为个人服务器上的统一文件中转、管理与分发平�
 
 | 入口 | 地址 | 用途 |
 | --- | --- | --- |
-| 管理页 | `https://sharebox.example.com/` | 认证后上传、重命名、删除文件和生成下载链接 |
-| 公开页 | `https://sharebox.example.com/public` | 匿名浏览和下载文件 |
+| 管理页 | `https://sharebox.example.com/` | 认证后上传、下载、重命名和删除文件 |
+| 私有下载 | `https://sharebox.example.com/download?path=...` | 认证后下载单个文件，支持 Range |
 
-在管理页选择或拖入文件，点击“开始全部上传”。暂停后可以继续；刷新页面后需要重新选择原文件才能续传。上传任务保留 7 天，上传完成后自动发布并刷新文件列表。
+在管理页选择或拖入文件，点击“开始全部上传”。暂停后可以继续；刷新页面后需要重新选择原文件才能续传。上传任务保留 7 天，上传完成后自动落入私有文件空间并刷新文件列表。
 
-点击文件旁的“生成下载链接”，可查看并复制该文件的公开下载地址。访客也可以通过公开页找到文件并点击整行下载。目录条目用于进入子目录，面包屑和“返回上级目录”用于导航。
+点击文件行或右侧下载按钮即可下载。目录条目用于进入子目录，面包屑和“返回上级目录”用于导航。当前版本不提供匿名分享链接。
 
-上传只能添加到根目录，暂不支持上传目录或创建目录。删除非空目录会被拒绝。文件发布采用复制，复制期间或进程被强制终止时可能出现不完整文件；公开页和下载入口需要应用持续运行。
+上传只能添加到根目录，暂不支持上传目录或创建目录。删除非空目录会被拒绝。文件写入采用复制，复制期间或进程被强制终止时可能出现不完整文件；下载入口需要应用持续运行。
 
 ## 部署方法
 
@@ -37,7 +36,7 @@ ShareBox 定位为个人服务器上的统一文件中转、管理与分发平�
 
 选择 Docker Compose 或 rootless Podman Quadlet 中的一种。两种方式均使用命名 volume 保存整个状态目录，不需要绑定宿主机数据路径。
 
-容器监听 `8123`，仅发布到宿主机 `127.0.0.1:8123`。在宿主机安装 Caddy，配置域名 DNS 指向服务器，并开放 HTTP/HTTPS 端口。镜像以 UID/GID `1000:1000` 运行。
+容器监听 `8123`，仅发布到宿主机 `127.0.0.1:8123`。生产环境通过 HTTPS 访问，`USER_URL` 必须设置为用户实际访问的主机名。镜像以 UID/GID `1000:1000` 运行。
 
 ### 管理员凭据
 
@@ -95,7 +94,7 @@ docker compose ps
 docker compose logs --tail 100 -f
 ```
 
-`sharebox-state` 由 Docker 管理，容器首次挂载时使用镜像目录初始化。应用在 volume 中创建 `data/` 和私有 `tmp/` 目录。删除或重建容器不会删除命名 volume。[Docker Compose volume 文档](https://docs.docker.com/reference/compose-file/volumes/)
+`sharebox-state` 由 Docker 管理，容器首次挂载时使用镜像目录初始化。应用在 volume 中创建私有的 `files/` 和 `staging/` 目录。删除或重建容器不会删除命名 volume。[Docker Compose volume 文档](https://docs.docker.com/reference/compose-file/volumes/)
 
 更新镜像：
 
@@ -186,46 +185,18 @@ systemctl --user restart sharebox.service
 
 停止服务使用 `systemctl --user stop sharebox.service`。更新前停止服务并备份 `sharebox-state` volume；回滚时修改 Quadlet 的 `Image` 为保留的版本标签，再重新加载和启动。命名 volume 属于独立用户，其他用户或 root 的 `podman` 命令不会操作同一份存储。
 
-### Caddy：HTTPS 与反向代理
+### 访问验证
 
-Caddy 在宿主机上运行，应用只向本机发布 `8123` 端口。登录和管理接口认证由应用处理，Caddy 不需要管理员凭据或数据 volume。
-
-按 [官方说明](https://caddyserver.com/docs/install) 安装 Caddy，将域名 DNS 指向服务器，开放 TCP `80`、`443`，并将 `USER_URL` 设置为相同主机名。
-
-保存以下配置到 `/etc/caddy/Caddyfile`，替换域名；已有其他站点时加入这个站点块。仓库提供相同的 [Caddyfile.example](Caddyfile.example)。
-
-```caddyfile
-sharebox.example.com {
- reverse_proxy 127.0.0.1:8123
-}
-```
-
-真实域名下 Caddy 自动管理 HTTPS 证书。由旧版本迁移时，先配置应用凭据、更新并验证应用登录，再移除原来的 `basic_auth` 和路由匹配配置，避免两层登录。
+应用监听 `8123`；生产环境通过 HTTPS 访问，并将 `USER_URL` 设为用户实际访问的主机名。验证入口：
 
 ```bash
-sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-sudo systemctl enable --now caddy
-# 已在运行时加载新配置：
-sudo systemctl reload caddy
-```
-
-验证入口：
-
-```bash
-curl -I https://sharebox.example.com/public
 curl -I https://sharebox.example.com/
-curl -I https://sharebox.example.com/_.data
+curl -I 'https://sharebox.example.com/download?path=missing.txt'
+curl -I https://sharebox.example.com/public
 curl -I https://sharebox.example.com/uploads
 ```
 
-公开页应返回 `200`；匿名管理页跳转 `/login`，Framework 数据请求返回框架的跳转响应；匿名上传返回 `401`。浏览器登录后验证上传、重命名、删除和退出，确认公开页及下载链接可匿名访问。
-
-出现 `502` 时检查应用容器与本机 `8123`；证书失败时检查 DNS、端口和 Caddy 日志。
-
-```bash
-sudo systemctl status caddy
-sudo journalctl -u caddy -n 100 --no-pager
-```
+匿名管理页跳转 `/login`，匿名下载和上传返回 `401`，`/public` 返回 `404`。浏览器登录后验证上传、下载、重命名、删除和退出。
 
 ### 配置项
 
@@ -234,14 +205,30 @@ Compose 在 `environment` 下配置，Quadlet 使用 `[Container]` 下的 `Envir
 | 配置 | 说明 |
 | --- | --- |
 | `USER_URL` | 生产环境必填，站点主机名，可包含端口，不含协议或路径 |
-| `STATE_DIR` | 状态根目录；镜像默认 `/var/lib/sharebox`，与 volume 挂载目标一致 |
+| `STATE_DIR` | 状态根目录，程序维护其中的 `files/` 和 `staging/`；镜像默认 `/var/lib/sharebox`，与 volume 挂载目标一致 |
 | `MAX_UPLOAD_BYTES` | 单文件大小上限，默认 `10737418240`（10 GiB），必须为正安全整数 |
 | `LOGGER_LEVEL` | 日志阈值，默认 `info`；支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`、`silent` |
 | `ADMIN_USERNAME` | 管理员用户名 |
 | `ADMIN_PASSWORD_HASH` | `npm run auth:hash` 生成的带盐 scrypt 哈希 |
 | `SESSION_SECRET` | 随机签名密钥，至少 32 字节；跨重启保持一致 |
 
-同一个状态 volume 只供一个应用实例使用。旧的 `DATA_DIR`、`UPLOAD_TMP_DIR` 已被忽略，迁移时将原文件和上传数据分别放入状态 volume 的 `data/`、`tmp/` 中。
+同一个状态 volume 只供一个应用实例使用。状态根目录包含 `files/`（私有文件）和 `staging/`（上传暂存），两者权限均为 `0700`。旧的 `DATA_DIR`、`UPLOAD_TMP_DIR` 已被忽略。
+
+### 从旧公开布局迁移
+
+旧版本的 `data/` 是公开根目录，`tmp/tus*` 保存上传暂存。升级到本版本前必须停止应用并迁移：
+
+```bash
+# 本地开发：先预览，再执行
+STATE_DIR=./tmp npm run migrate:state -- --dry-run
+STATE_DIR=./tmp npm run migrate:state
+
+# Docker Compose：先 docker compose stop
+docker run --rm -v sharebox-state:/var/lib/sharebox ghcr.io/qw0er/sharebox:latest \
+  node scripts/migrate-state.mjs
+```
+
+迁移会把 `data/` 改名为 `files/`、`tmp/tus*` 改名为 `staging/tus*`，不会创建任何分享；迁移后所有文件默认私有。脚本拒绝 `data/` 与 `files/` 同时存在的歧义布局。升级前请停止服务并备份整个状态 volume。
 
 ## 源码构建
 
@@ -262,7 +249,7 @@ set +a
 npm run dev
 ```
 
-打开终端显示的本地地址，管理页为 `/`，公开页为 `/public`。开发数据存放在项目的 `tmp/` 下，开发日志通过 `pino-pretty` 管道美化；本地开发也使用应用登录，HTTP 开发 Cookie 不带 Secure。
+打开终端显示的本地地址，管理页为 `/`。开发数据存放在项目 `tmp/` 下的 `files/` 和 `staging/`；如果启动时提示 legacy storage layout，先按上文迁移 `./tmp`。开发日志通过 `pino-pretty` 管道美化；本地开发也使用应用登录，HTTP 开发 Cookie 不带 Secure。
 
 检查和构建：
 
@@ -282,7 +269,7 @@ npm run build
 USER_URL=sharebox.example.com STATE_DIR=./tmp HOST=127.0.0.1 PORT=8123 npm start
 ```
 
-生产启动输出 JSON 日志，需要提前导入管理员凭据，并配置 Caddy 提供 HTTPS。
+生产启动输出 JSON 日志，需要提前导入管理员凭据，并由部署环境提供 HTTPS 访问入口。
 
 从源码构建容器镜像：
 
@@ -298,9 +285,9 @@ podman build -f packages/Dockerfile -t localhost/sharebox:local .
 
 日志写入标准输出；生产环境保留 Pino JSON，开发环境由 `pino-pretty` 美化。用 `LOGGER_LEVEL=debug npm run dev` 查看流程细节，`trace` 还会记录上传锁等待，排查后建议恢复 `info`。
 
-- `info`：配置与存储初始化、路由操作结果、登录登出、重命名和删除、上传发布与过期清理、下载流开始与结束。
+- `info`：配置与存储初始化、路由操作结果、登录登出、重命名和删除、上传落盘与过期清理、下载流开始与结束。
 - `warn`：认证失败、无效输入、资源不存在、上传冲突等预期的请求拒绝。
-- `error`：存储权限、读写故障、上传发布或清理失败等需要排查的异常；`fatal` 表示阻止启动的配置错误。
+- `error`：存储权限、读写故障、上传落盘或清理失败等需要排查的异常；`fatal` 表示阻止启动的配置错误。
 - `debug` / `trace`：请求开始、上传偏移与完成凭据恢复、清理扫描、下载取消、上传锁等详细过程。
 
 应用路由的日志包含 `requestId`、`method`、`path`，结果日志包含 `status` 和 `durationMs`；按 `requestId` 关联同一次路由调用的日志，按 `uploadId` 追踪跨请求上传。路由结果表示数据或响应已准备好，下载流结束表示服务端已读完文件，不代表客户端已保存。未登录页面跳转按正常重定向记录；主动取消的下载按 `debug` 记录。

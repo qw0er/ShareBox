@@ -85,13 +85,13 @@ function uploadStatusMessage(status: number) {
 }
 
 // Rules and conversions: no filesystem access, logging, or implicit clock reads.
-function validateDirectoryLayout(publicRoot: string, tempRoot: string) {
+function validateDirectoryLayout(filesRoot: string, stagingRoot: string) {
 	if (
-		tempRoot === publicRoot ||
-		tempRoot.startsWith(`${publicRoot}${path.sep}`) ||
-		publicRoot.startsWith(`${tempRoot}${path.sep}`)
+		stagingRoot === filesRoot ||
+		stagingRoot.startsWith(`${filesRoot}${path.sep}`) ||
+		filesRoot.startsWith(`${stagingRoot}${path.sep}`)
 	) {
-		throw new Error("Temporary directory must be separate from data directory");
+		throw new Error("Staging directory must be separate from files directory");
 	}
 }
 
@@ -177,18 +177,18 @@ function completionHeaders(receipt: Receipt) {
 
 // Stateless I/O helpers. Callers own synchronization and operation ordering.
 async function prepareUploadDirectories(
-	config: Pick<typeof CONFIG, "datadir" | "tempdir">,
+	config: Pick<typeof CONFIG, "filesDir" | "stagingDir">,
 ) {
-	const publicRoot = await realpath(config.datadir);
-	const tempRoot = path.resolve(config.tempdir);
-	await mkdir(tempRoot, { recursive: true, mode: 0o700 });
-	const resolved = await realpath(tempRoot);
-	validateDirectoryLayout(publicRoot, resolved);
+	const filesRoot = await realpath(config.filesDir);
+	const stagingRoot = path.resolve(config.stagingDir);
+	await mkdir(stagingRoot, { recursive: true, mode: 0o700 });
+	const resolved = await realpath(stagingRoot);
+	validateDirectoryLayout(filesRoot, resolved);
 	const directory = path.join(resolved, "tus");
 	const receipts = path.join(resolved, "tus-receipts");
 	await mkdir(directory, { recursive: true, mode: 0o700 });
 	await mkdir(receipts, { recursive: true, mode: 0o700 });
-	return { publicRoot, directory, receipts };
+	return { filesRoot, directory, receipts };
 }
 
 async function statIfExists(filename: string) {
@@ -200,9 +200,9 @@ async function statIfExists(filename: string) {
 	}
 }
 
-async function validateUpload(upload: Upload, publicRoot: string) {
+async function validateUpload(upload: Upload, filesRoot: string) {
 	const { filename, size } = parseUploadMetadata(upload);
-	if (await statIfExists(path.join(publicRoot, filename)))
+	if (await statIfExists(path.join(filesRoot, filename)))
 		throw { status_code: 409, body: "同名文件或目录已存在。" };
 	uploadLogger.info(
 		{ uploadId: upload.id, filename, size },
@@ -213,7 +213,7 @@ async function validateUpload(upload: Upload, publicRoot: string) {
 
 async function readReceipt(
 	receipts: string,
-	publicRoot: string,
+	filesRoot: string,
 	id: string,
 ): Promise<Receipt | undefined> {
 	const receiptPath = path.join(receipts, id);
@@ -228,7 +228,7 @@ async function readReceipt(
 		// Old /complete receipts did not store the size; resolve it outside the parser.
 		const size =
 			receipt.size ??
-			(await lstat(path.join(publicRoot, receipt.filename))).size;
+			(await lstat(path.join(filesRoot, receipt.filename))).size;
 		return { ...receipt, size };
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -281,7 +281,7 @@ export class UploadService {
 
 	private constructor(
 		private readonly config: typeof CONFIG,
-		private readonly publicRoot: string,
+		private readonly filesRoot: string,
 		private readonly directory: string,
 		private readonly receipts: string,
 	) {
@@ -297,7 +297,7 @@ export class UploadService {
 			datastore: this.store,
 			locker: this.locker,
 			onUploadCreate: async (request, upload) => {
-				const metadata = await validateUpload(upload, this.publicRoot);
+				const metadata = await validateUpload(upload, this.filesRoot);
 				this.creating.set(request, upload.id);
 				return { metadata };
 			},
@@ -310,11 +310,11 @@ export class UploadService {
 	}
 
 	static async create(config = CONFIG) {
-		const { publicRoot, directory, receipts } =
+		const { filesRoot, directory, receipts } =
 			await prepareUploadDirectories(config);
 		uploadLogger.info(
 			{
-				publicRoot,
+				filesRoot,
 				directory,
 				receipts,
 				maxUploadBytes: config.maxUploadBytes,
@@ -322,7 +322,7 @@ export class UploadService {
 			},
 			"Upload service initialized",
 		);
-		return new UploadService(config, publicRoot, directory, receipts);
+		return new UploadService(config, filesRoot, directory, receipts);
 	}
 
 	private async withLock<T>(
@@ -348,7 +348,7 @@ export class UploadService {
 
 	private async finishUpload(id: string, signal: AbortSignal) {
 		return this.withLock(id, signal, async () => {
-			const receipt = await readReceipt(this.receipts, this.publicRoot, id);
+			const receipt = await readReceipt(this.receipts, this.filesRoot, id);
 			if (receipt) {
 				uploadLogger.debug(
 					{ uploadId: id },
@@ -373,11 +373,11 @@ export class UploadService {
 			const startedAt = performance.now();
 			uploadLogger.debug(
 				{ uploadId: id, filename, size },
-				"Publishing uploaded file",
+				"Finalizing uploaded file",
 			);
 			await copyUploadedFile(
 				path.join(this.directory, id),
-				path.join(this.publicRoot, filename),
+				path.join(this.filesRoot, filename),
 			);
 			const completed: Receipt = { success: true, filename, size };
 			await writeReceipt(path.join(this.receipts, id), completed);
@@ -388,7 +388,7 @@ export class UploadService {
 					size: upload.size,
 					durationMs: Math.round(performance.now() - startedAt),
 				},
-				"Upload published",
+				"Upload finalized",
 			);
 			return completed;
 		});
@@ -413,7 +413,7 @@ export class UploadService {
 		await this.withLock(id, new AbortController().signal, async () => {
 			if (
 				[...this.creating.values()].includes(id) ||
-				!(await readReceipt(this.receipts, this.publicRoot, id))
+				!(await readReceipt(this.receipts, this.filesRoot, id))
 			)
 				return;
 			try {

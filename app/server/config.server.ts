@@ -9,9 +9,9 @@ const storage = initializeStorage(
 );
 
 export const CONFIG = {
-	datadir: storage.datadir,
+	filesDir: storage.filesDir,
+	stagingDir: storage.stagingDir,
 	loggerLevel: LOGGER_LEVEL,
-	tempdir: storage.tempdir,
 	maxUploadBytes,
 	adminHost,
 };
@@ -19,7 +19,8 @@ export const CONFIG = {
 logger.info(
 	{
 		component: "config",
-		dataDir: CONFIG.datadir,
+		filesDir: CONFIG.filesDir,
+		stagingDir: CONFIG.stagingDir,
 		adminHost,
 		maxUploadBytes,
 		loggerLevel: LOGGER_LEVEL,

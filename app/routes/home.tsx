@@ -3,8 +3,8 @@ import WorkspaceLayout from "~/components/layout/WorkspaceLayout";
 import UploadPanel from "~/components/upload/UploadPanel";
 import { getAuth } from "~/server/auth.server";
 import { CONFIG } from "~/server/config.server";
+import { getFileTree } from "~/server/files/repository.server";
 import { logger, withRequestLogging } from "~/server/logger.server";
-import { getFileTree } from "~/server/read-files.server";
 import type { Route } from "./+types/home";
 
 export function meta() {
@@ -18,7 +18,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 		await getAuth().requireAdmin(request, true);
 		const startedAt = Date.now();
 		try {
-			const fileTree = await getFileTree(CONFIG.datadir);
+			const fileTree = await getFileTree(CONFIG.filesDir);
 			logger.debug(
 				{
 					component: "file-browser",

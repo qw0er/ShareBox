@@ -1,12 +1,11 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import type {
 	FileActionContext,
 	FileActionResult,
 } from "./action-types.server";
 import { CONFIG } from "./config.server";
 import { fileOperationLevel, fileOperationMessage } from "./file-errors.server";
-import { checkRootDirectory } from "./utils.server";
+import { resolveEntry } from "./files/paths.server";
 
 export async function handleRemoveAction({
 	form,
@@ -27,7 +26,7 @@ export async function handleRemoveAction({
 	}
 
 	try {
-		await removeFileEntry(CONFIG.datadir, relativePath);
+		await removeFileEntry(CONFIG.filesDir, relativePath);
 		requestLogger.info(
 			{ operation: "remove", relativePath },
 			"File entry removed",
@@ -46,57 +45,17 @@ export async function removeFileEntry(
 	rootDir: string,
 	relativePath: string,
 ): Promise<void> {
-	const { targetPath, targetStats } = await resolveFileEntry(
-		rootDir,
-		relativePath,
-	);
+	const { targetPath, targetStats } = await resolveEntry(rootDir, relativePath);
 
-	if (targetStats?.isFile()) {
+	if (targetStats.isFile()) {
 		await fs.unlink(targetPath);
 		return;
 	}
 
-	if (targetStats?.isDirectory()) {
+	if (targetStats.isDirectory()) {
 		await fs.rmdir(targetPath);
 		return;
 	}
 
 	throw new Error("Unsupported file type");
-}
-
-export async function resolveFileEntry(rootDir: string, relativePath: string) {
-	if (
-		!relativePath ||
-		path.isAbsolute(relativePath) ||
-		path.win32.isAbsolute(relativePath)
-	) {
-		throw new Error("Invalid file path");
-	}
-
-	const segments = relativePath.split(/[\\/]/);
-	if (
-		segments.some(
-			(segment) =>
-				!segment ||
-				segment === "." ||
-				segment === ".." ||
-				segment.includes("\0"),
-		)
-	) {
-		throw new Error("Invalid file path");
-	}
-
-	let targetPath = path.resolve(rootDir);
-	await checkRootDirectory(targetPath);
-	let targetStats: Awaited<ReturnType<typeof fs.lstat>> | undefined;
-
-	for (const segment of segments) {
-		targetPath = path.join(targetPath, segment);
-		targetStats = await fs.lstat(targetPath);
-		if (targetStats.isSymbolicLink()) {
-			throw new Error("Symbolic links are not supported");
-		}
-	}
-
-	return { targetPath, targetStats };
 }

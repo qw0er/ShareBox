@@ -1,13 +1,20 @@
 import ChevronRight from "@mui/icons-material/ChevronRight";
-import { Box, ButtonBase, Stack, Typography } from "@mui/material";
+import DownloadOutlined from "@mui/icons-material/DownloadOutlined";
+import {
+	Box,
+	ButtonBase,
+	IconButton,
+	Stack,
+	Tooltip,
+	Typography,
+} from "@mui/material";
 import { useState } from "react";
 import { Link } from "react-router";
 import type { FileNode } from "~/types/files";
+import { privateDownloadUrl } from "~/utils/download-links";
 import { formatSize } from "~/utils/file-format";
-import { publicDownloadUrl } from "~/utils/public-links";
 import DeleteFileButton from "./DeleteFileButton";
 import DirectoryBrowser from "./DirectoryBrowser";
-import DownloadLinkButton from "./DownloadLinkButton";
 import { FileEntryContent, fileEntryButtonSx } from "./FileEntryRow";
 import RenameButton from "./RenameButton";
 
@@ -40,7 +47,7 @@ function ManagedEntry({
 		>
 			<ButtonBase
 				component={directory ? "button" : Link}
-				to={directory ? undefined : publicDownloadUrl(node.path)}
+				to={directory ? undefined : privateDownloadUrl(node.path)}
 				{...(!directory ? { reloadDocument: true } : {})}
 				download={directory ? undefined : node.name}
 				onClick={directory ? () => onNavigate(node.path) : undefined}
@@ -75,7 +82,19 @@ function ManagedEntry({
 					pb: { xs: 1, sm: 0 },
 				}}
 			>
-				{node.type === "file" && <DownloadLinkButton node={node} />}
+				{node.type === "file" && (
+					<Tooltip title="下载">
+						<IconButton
+							component="a"
+							href={privateDownloadUrl(node.path)}
+							download={node.name}
+							size="small"
+							aria-label={`下载 ${node.name}`}
+						>
+							<DownloadOutlined fontSize="small" />
+						</IconButton>
+					</Tooltip>
+				)}
 				<RenameButton node={node} />
 				<DeleteFileButton node={node} />
 			</Stack>

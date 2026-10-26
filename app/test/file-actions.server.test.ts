@@ -24,7 +24,7 @@ const { CONFIG } = await import("../server/config.server");
 const { prepareFileAction } = await import("../server/file-actions.server");
 const { handleRemoveAction } = await import("../server/remove-action.server");
 const { handleRenameAction } = await import("../server/rename-action.server");
-const originalDataDir = CONFIG.datadir;
+const originalFilesDir = CONFIG.filesDir;
 
 async function actionRequest(formData: FormData): Promise<Request> {
 	const encoded = new Request("http://localhost/", {
@@ -64,8 +64,8 @@ describe("file actions", () => {
 
 	beforeEach(async () => {
 		rootDir = await mkdtemp(path.join(os.tmpdir(), "sharebox-actions-"));
-		CONFIG.datadir = path.join(rootDir, "public");
-		await mkdir(CONFIG.datadir);
+		CONFIG.filesDir = path.join(rootDir, "files");
+		await mkdir(CONFIG.filesDir);
 		CONFIG.adminHost = "";
 	});
 
@@ -74,11 +74,11 @@ describe("file actions", () => {
 	});
 
 	afterAll(() => {
-		CONFIG.datadir = originalDataDir;
+		CONFIG.filesDir = originalFilesDir;
 	});
 
 	it("removes a file", async () => {
-		const filePath = path.join(CONFIG.datadir, "remove.txt");
+		const filePath = path.join(CONFIG.filesDir, "remove.txt");
 		await writeFile(filePath, "content");
 		const form = new FormData();
 		form.set("path", "remove.txt");
@@ -107,9 +107,9 @@ describe("file actions", () => {
 	});
 
 	it("does not remove a non-empty directory", async () => {
-		await mkdir(path.join(CONFIG.datadir, "not-empty"));
+		await mkdir(path.join(CONFIG.filesDir, "not-empty"));
 		await writeFile(
-			path.join(CONFIG.datadir, "not-empty", "file.txt"),
+			path.join(CONFIG.filesDir, "not-empty", "file.txt"),
 			"content",
 		);
 		const form = new FormData();
@@ -133,33 +133,49 @@ describe("file actions", () => {
 	);
 
 	it("renames a file and preserves its contents", async () => {
-		await writeFile(path.join(CONFIG.datadir, "old.txt"), "contents");
+		await writeFile(path.join(CONFIG.filesDir, "old.txt"), "contents");
 		const form = new FormData();
 		form.set("path", "old.txt");
 		form.set("newName", "new.txt");
 		expect(await submitRename(form)).toEqual({ success: true });
-		expect(await readFile(path.join(CONFIG.datadir, "new.txt"), "utf8")).toBe(
+		expect(await readFile(path.join(CONFIG.filesDir, "new.txt"), "utf8")).toBe(
 			"contents",
 		);
+	});
+	it("refuses to overwrite an existing rename target", async () => {
+		await writeFile(path.join(CONFIG.filesDir, "old.txt"), "old");
+		await writeFile(path.join(CONFIG.filesDir, "existing.txt"), "existing");
+		const form = new FormData();
+		form.set("path", "old.txt");
+		form.set("newName", "existing.txt");
+		expect(await submitRename(form)).toEqual({
+			error: "同名文件或文件夹已存在，请换一个名称。",
+		});
+		expect(await readFile(path.join(CONFIG.filesDir, "old.txt"), "utf8")).toBe(
+			"old",
+		);
+		expect(
+			await readFile(path.join(CONFIG.filesDir, "existing.txt"), "utf8"),
+		).toBe("existing");
 	});
 	it.each(["", "../outside.txt", "folder/new.txt", ".."])(
 		"rejects unsafe rename name %j",
 		async (newName) => {
-			await writeFile(path.join(CONFIG.datadir, "old.txt"), "contents");
+			await writeFile(path.join(CONFIG.filesDir, "old.txt"), "contents");
 			const form = new FormData();
 			form.set("path", "old.txt");
 			form.set("newName", newName);
 			expect(await submitRename(form)).toEqual({
 				error: "文件名无效，请输入有效的新名称。",
 			});
-			expect(await readFile(path.join(CONFIG.datadir, "old.txt"), "utf8")).toBe(
-				"contents",
-			);
+			expect(
+				await readFile(path.join(CONFIG.filesDir, "old.txt"), "utf8"),
+			).toBe("contents");
 		},
 	);
 	it("rejects a rename outside the data tree or through a symbolic link", async () => {
 		await writeFile(path.join(rootDir, "outside.txt"), "contents");
-		await symlink(rootDir, path.join(CONFIG.datadir, "link"));
+		await symlink(rootDir, path.join(CONFIG.filesDir, "link"));
 		for (const target of ["../outside.txt", "link/outside.txt"]) {
 			const form = new FormData();
 			form.set("path", target);

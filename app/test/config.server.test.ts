@@ -65,18 +65,23 @@ it("defaults to 10 GiB per file", async () => {
 it("creates the complete layout from a single state directory", async () => {
 	const { CONFIG } = await import("../server/config.server");
 	const resolvedRoot = await realpath(path.join(root, "state"));
-	expect(CONFIG.datadir).toBe(path.join(resolvedRoot, "data"));
-	expect(CONFIG.tempdir).toBe(path.join(resolvedRoot, "tmp"));
+	expect(CONFIG.filesDir).toBe(path.join(resolvedRoot, "files"));
+	expect(CONFIG.stagingDir).toBe(path.join(resolvedRoot, "staging"));
 	for (const dir of [
-		CONFIG.datadir,
-		CONFIG.tempdir,
-		path.join(CONFIG.tempdir, "tus"),
-		path.join(CONFIG.tempdir, "tus-receipts"),
+		CONFIG.filesDir,
+		CONFIG.stagingDir,
+		path.join(CONFIG.stagingDir, "tus"),
+		path.join(CONFIG.stagingDir, "tus-receipts"),
 	]) {
 		expect((await stat(dir)).isDirectory()).toBe(true);
 	}
-	expect((await stat(CONFIG.datadir)).mode & 0o777).toBe(0o755);
-	for (const name of ["tmp", "tmp/tus", "tmp/tus-receipts"]) {
+	expect((await stat(resolvedRoot)).mode & 0o777).toBe(0o700);
+	for (const name of [
+		"files",
+		"staging",
+		"staging/tus",
+		"staging/tus-receipts",
+	]) {
 		expect((await stat(path.join(root, "state", name))).mode & 0o777).toBe(
 			0o700,
 		);
@@ -85,34 +90,34 @@ it("creates the complete layout from a single state directory", async () => {
 
 it("keeps existing files and upload state across startup", async () => {
 	const { CONFIG } = await import("../server/config.server");
-	await writeFile(path.join(CONFIG.datadir, "keep.txt"), "public");
+	await writeFile(path.join(CONFIG.filesDir, "keep.txt"), "public");
 	await writeFile(
-		path.join(CONFIG.tempdir, "tus", "partial"),
+		path.join(CONFIG.stagingDir, "tus", "partial"),
 		"partial upload",
 	);
 	await writeFile(
-		path.join(CONFIG.tempdir, "tus-receipts", "receipt"),
+		path.join(CONFIG.stagingDir, "tus-receipts", "receipt"),
 		"receipt",
 	);
-	await chmod(CONFIG.tempdir, 0o755);
+	await chmod(CONFIG.stagingDir, 0o755);
 	vi.resetModules();
 	await import("../server/config.server");
-	expect(await readFile(path.join(CONFIG.datadir, "keep.txt"), "utf8")).toBe(
+	expect(await readFile(path.join(CONFIG.filesDir, "keep.txt"), "utf8")).toBe(
 		"public",
 	);
 	expect(
-		await readFile(path.join(CONFIG.tempdir, "tus", "partial"), "utf8"),
+		await readFile(path.join(CONFIG.stagingDir, "tus", "partial"), "utf8"),
 	).toBe("partial upload");
 	expect(
 		await readFile(
-			path.join(CONFIG.tempdir, "tus-receipts", "receipt"),
+			path.join(CONFIG.stagingDir, "tus-receipts", "receipt"),
 			"utf8",
 		),
 	).toBe("receipt");
-	expect((await stat(CONFIG.tempdir)).mode & 0o777).toBe(0o700);
+	expect((await stat(CONFIG.stagingDir)).mode & 0o777).toBe(0o700);
 });
 
-it.each(["data", "tmp", "tmp/tus", "tmp/tus-receipts"])(
+it.each(["files", "staging", "staging/tus", "staging/tus-receipts"])(
 	"rejects a symbolic internal directory %s without changing its target",
 	async (name) => {
 		const state = path.join(root, "state");
@@ -129,7 +134,7 @@ it.each(["data", "tmp", "tmp/tus", "tmp/tus-receipts"])(
 	},
 );
 
-it.each(["data", "tmp"])(
+it.each(["files", "staging"])(
 	"rejects an internal file at %s without removing it",
 	async (name) => {
 		await mkdir(path.join(root, "state"));
@@ -147,14 +152,45 @@ it.each(["DATA_DIR", "UPLOAD_TMP_DIR"])(
 	async (name) => {
 		vi.stubEnv(name, root);
 		const { CONFIG } = await import("../server/config.server");
-		expect(CONFIG.datadir).toBe(
-			path.join(await realpath(path.join(root, "state")), "data"),
+		expect(CONFIG.filesDir).toBe(
+			path.join(await realpath(path.join(root, "state")), "files"),
 		);
-		expect(CONFIG.tempdir).toBe(
-			path.join(await realpath(path.join(root, "state")), "tmp"),
+		expect(CONFIG.stagingDir).toBe(
+			path.join(await realpath(path.join(root, "state")), "staging"),
 		);
 	},
 );
+
+it("refuses to start on the legacy public layout", async () => {
+	const state = path.join(root, "state");
+	await mkdir(path.join(state, "data"), { recursive: true });
+	await writeFile(path.join(state, "data", "keep.txt"), "keep");
+	await expect(import("../server/config.server")).rejects.toThrow(
+		"Legacy storage layout",
+	);
+	expect(await readFile(path.join(state, "data", "keep.txt"), "utf8")).toBe(
+		"keep",
+	);
+	await expect(stat(path.join(state, "files"))).rejects.toMatchObject({
+		code: "ENOENT",
+	});
+});
+
+it("refuses to start on an ambiguous legacy and current layout", async () => {
+	const state = path.join(root, "state");
+	await mkdir(path.join(state, "data"), { recursive: true });
+	await mkdir(path.join(state, "files"), { recursive: true });
+	await expect(import("../server/config.server")).rejects.toThrow(
+		"Ambiguous storage layout",
+	);
+});
+
+it("refuses to start with legacy upload staging", async () => {
+	await mkdir(path.join(root, "state", "tmp", "tus"), { recursive: true });
+	await expect(import("../server/config.server")).rejects.toThrow(
+		"Legacy storage layout",
+	);
+});
 
 it("validates the upload limit before creating storage", async () => {
 	vi.stubEnv("MAX_UPLOAD_BYTES", "0");
@@ -179,8 +215,8 @@ it.each([undefined, ""])(
 		const storage = await import("../server/storage.server");
 		const initializer = vi.spyOn(storage, "initializeStorage").mockReturnValue({
 			stateDir: root,
-			datadir: path.join(root, "data"),
-			tempdir: path.join(root, "tmp"),
+			filesDir: path.join(root, "files"),
+			stagingDir: path.join(root, "staging"),
 		});
 		try {
 			await import("../server/config.server");

@@ -1,5 +1,0 @@
-# Replace the domain before use. Runtime USER_URL must match it.
-# ShareBox handles administrator login; Caddy provides HTTPS and reverse proxy.
-sharebox.example.com {
- reverse_proxy 127.0.0.1:8123
-}

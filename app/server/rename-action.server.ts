@@ -6,7 +6,8 @@ import type {
 } from "./action-types.server";
 import { CONFIG } from "./config.server";
 import { fileOperationLevel, fileOperationMessage } from "./file-errors.server";
-import { resolveFileEntry } from "./remove-action.server";
+import { resolveEntry } from "./files/paths.server";
+import { isNotFoundError } from "./utils.server";
 export async function handleRenameAction({
 	form,
 	requestLogger,
@@ -39,11 +40,21 @@ export async function handleRenameAction({
 		return { error: "文件名无效，请输入有效的新名称。" };
 	}
 	try {
-		const { targetPath: absolutePath } = await resolveFileEntry(
-			CONFIG.datadir,
+		const { targetPath: absolutePath } = await resolveEntry(
+			CONFIG.filesDir,
 			relativePath,
 		);
 		const newAbsolutePath = path.join(path.dirname(absolutePath), newName);
+		// fs.rename() replaces an existing target on POSIX; reject conflicts
+		// explicitly so a rename cannot silently destroy another file.
+		try {
+			await fs.lstat(newAbsolutePath);
+			throw Object.assign(new Error("Target already exists"), {
+				code: "EEXIST",
+			});
+		} catch (error) {
+			if (!isNotFoundError(error)) throw error;
+		}
 		await fs.rename(absolutePath, newAbsolutePath);
 	} catch (error) {
 		requestLogger[fileOperationLevel(error)](
