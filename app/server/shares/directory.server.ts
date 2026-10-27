@@ -1,5 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { redirect } from "react-router";
+import type { BrowserEntry } from "~/components/files/DirectoryBrowser";
+import { sharedDownloadUrl } from "~/utils/directory-links";
 import { deliverFile } from "../files/delivery.server";
 import { parseRelativePath, resolveEntry } from "../files/paths.server";
 import { logger } from "../logger.server";
@@ -10,14 +13,6 @@ type DirectoryShare = {
 	targetDev: string;
 	targetIno: string;
 };
-const escapeHtml = (value: string) =>
-	value.replace(
-		/[&<>"']/g,
-		(character) =>
-			({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-				character
-			] || character,
-	);
 
 async function checkIdentity(filesDir: string, share: DirectoryShare) {
 	const { targetPath } = await resolveEntry(filesDir, share.targetPath);
@@ -31,7 +26,7 @@ async function checkIdentity(filesDir: string, share: DirectoryShare) {
 	return targetPath;
 }
 
-export async function browseDirectoryShare(
+async function resolveSharedEntry(
 	filesDir: string,
 	share: DirectoryShare,
 	request: Request,
@@ -45,31 +40,40 @@ export async function browseDirectoryShare(
 	} catch {
 		throw new Response("File not found", { status: 404 });
 	}
-	const { targetPath, targetStats } = await resolveEntry(root, relative, {
-		allowRoot: true,
-	});
-	if (targetStats.isFile())
-		return deliverFile(root, relative, request, "shares");
-	if (!targetStats.isDirectory())
+	const entry = await resolveEntry(root, relative, { allowRoot: true });
+	return { root, relative, ...entry };
+}
+
+export async function downloadDirectoryShare(
+	filesDir: string,
+	share: DirectoryShare,
+	request: Request,
+) {
+	const { root, relative, targetStats } = await resolveSharedEntry(
+		filesDir,
+		share,
+		request,
+	);
+	if (!targetStats.isFile())
 		throw new Response("File not found", { status: 404 });
-	const url = (value: string) =>
-		`/s/${share.id}${value ? `?${new URLSearchParams({ path: value })}` : ""}`;
-	const entries = await fs.readdir(targetPath, { withFileTypes: true });
-	const rows: string[] = [];
-	for (const entry of entries.sort(
-		(a, b) =>
-			Number(b.isDirectory()) - Number(a.isDirectory()) ||
-			a.name.localeCompare(b.name),
-	)) {
+	return deliverFile(root, relative, request, "shares");
+}
+
+async function readEntries(root: string, relative: string, targetPath: string) {
+	const entries: BrowserEntry[] = [];
+	for (const entry of await fs.readdir(targetPath, { withFileTypes: true })) {
 		if (!entry.isFile() && !entry.isDirectory()) continue;
 		const child = relative ? `${relative}/${entry.name}` : entry.name;
 		try {
-			const resolved = await resolveEntry(root, child);
-			if (!resolved.targetStats.isFile() && !resolved.targetStats.isDirectory())
-				continue;
-			rows.push(
-				`<li><a href="${escapeHtml(url(child))}">${escapeHtml(entry.name)}${resolved.targetStats.isDirectory() ? "/" : ""}</a><span>${resolved.targetStats.isFile() ? `${resolved.targetStats.size.toLocaleString("en")} B` : ""}</span></li>`,
-			);
+			const { targetStats } = await resolveEntry(root, child);
+			if (!targetStats.isFile() && !targetStats.isDirectory()) continue;
+			entries.push({
+				name: entry.name,
+				path: child,
+				type: targetStats.isDirectory() ? "directory" : "file",
+				size: targetStats.isFile() ? targetStats.size : undefined,
+				modifiedAt: targetStats.mtime.toISOString(),
+			});
 		} catch (error) {
 			if (
 				!["ENOENT", "ENOTDIR"].includes(
@@ -83,22 +87,34 @@ export async function browseDirectoryShare(
 				throw error;
 		}
 	}
+	return entries;
+}
+
+export async function readSharedDirectory(
+	filesDir: string,
+	share: DirectoryShare,
+	request: Request,
+) {
+	const { root, relative, targetPath, targetStats } = await resolveSharedEntry(
+		filesDir,
+		share,
+		request,
+	);
+	// Preserve previously issued file URLs while keeping file bodies out of page loaders.
+	if (targetStats.isFile())
+		throw redirect(sharedDownloadUrl(share.id, relative));
+	if (!targetStats.isDirectory())
+		throw new Response("File not found", { status: 404 });
+	const entries = await readEntries(root, relative, targetPath);
 	await checkIdentity(filesDir, share);
 	logger.info(
-		{ component: "shares", entries: rows.length },
+		{ component: "shares", entries: entries.length },
 		"Shared directory listed",
 	);
-	const title = escapeHtml(relative || path.basename(share.targetPath));
-	const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · ShareBox</title><style>body{font:16px system-ui;margin:40px auto;padding:0 20px;max-width:800px;background:#f8fafc;color:#172033}h1,a{overflow-wrap:anywhere}li{display:flex;justify-content:space-between;gap:20px;padding:16px 0;border-bottom:1px solid #ddd}ul{padding:0}a{color:#245ac4}span{white-space:nowrap;color:#596579}</style><main><p>ShareBox · Shared directory / 共享目录</p><h1>${title}</h1>${relative ? `<a href="${escapeHtml(url(relative.split("/").slice(0, -1).join("/")))}">↑ Parent directory / 上级目录</a>` : ""}<ul>${rows.join("")}</ul>${rows.length ? "" : "<p>Empty directory / 空目录</p>"}</main></html>`;
-	return new Response(request.method === "HEAD" ? null : html, {
-		headers: {
-			"Content-Type": "text/html; charset=utf-8",
-			"Cache-Control": "no-store",
-			"X-Robots-Tag": "noindex, nofollow",
-			"X-Content-Type-Options": "nosniff",
-			"Content-Security-Policy":
-				"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
-			"Referrer-Policy": "no-referrer",
-		},
-	});
+	return {
+		name: path.basename(share.targetPath),
+		path: relative,
+		entries,
+		shareId: share.id,
+	};
 }

@@ -5,7 +5,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { openDatabase, type StateDatabase } from "../server/db/client.server";
 import { deliverFile } from "../server/files/delivery.server";
 import { handleShareAction } from "../server/shares/actions.server";
-import { downloadShare, publishFile } from "../server/shares/service.server";
+import {
+	downloadShare,
+	loadSharePage,
+	publishFile,
+} from "../server/shares/service.server";
 import {
 	createShareStore,
 	type ShareStore,
@@ -340,10 +344,25 @@ it("publishes a live directory tree with scoped browsing, downloads and revocati
 				{ method, headers },
 			),
 		);
-	const listing = await browse("");
-	expect(listing.headers.get("Content-Type")).toContain("text/html");
-	expect(await listing.text()).toContain("sub/");
-	expect(await (await browse("sub")).text()).toContain("a &amp; b.txt");
+	const page = (relative: string) =>
+		loadSharePage(
+			store,
+			files,
+			id,
+			new Request(
+				`http://localhost/s/${id}?${new URLSearchParams({ path: relative })}`,
+			),
+		);
+	const listing = await page("");
+	expect(listing.name).toBe("published");
+	expect(listing.entries.map((entry) => entry.name)).toEqual(["sub"]);
+	expect((await page("sub")).entries[0]).toMatchObject({
+		name: "a & b.txt",
+		size: 7,
+		path: "sub/a & b.txt",
+	});
+	expect((await browse("")).status).toBe(404);
+	await expect(page("sub/a & b.txt")).rejects.toMatchObject({ status: 302 });
 	const range = await browse("sub/a & b.txt", "GET", { Range: "bytes=1-3" });
 	expect(range.status).toBe(206);
 	expect(await range.text()).toBe("ont");
@@ -357,12 +376,15 @@ it("publishes a live directory tree with scoped browsing, downloads and revocati
 		"escape/test.txt",
 		"sub\\a",
 		"%2e%2e/test.txt",
-	])
+	]) {
 		expect((await browse(value)).status).toBe(404);
+		await expect(page(value)).rejects.toMatchObject({ status: 404 });
+	}
 	store.renamePaths("published", "renamed");
 	await fs.rename(path.join(files, "published"), path.join(files, "renamed"));
 	expect(await (await browse("new.txt")).text()).toBe("new");
 	store.revoke(id);
+	await expect(page("")).rejects.toMatchObject({ status: 404 });
 	expect((await browse("")).status).toBe(404);
 	expect((await browse("new.txt", "HEAD")).status).toBe(404);
 });

@@ -1,5 +1,6 @@
 import { Alert, Stack } from "@mui/material";
 import { useRef, useState } from "react";
+import { redirect } from "react-router";
 import FileBrowser from "~/components/files/FileBrowser";
 import WorkspaceLayout from "~/components/layout/WorkspaceLayout";
 import ShareDialog from "~/components/shares/ShareDialog";
@@ -12,6 +13,7 @@ import { getFileTree } from "~/server/files/repository.server";
 import { logger, withRequestLogging } from "~/server/logger.server";
 import { shareStore } from "~/server/shares/runtime.server";
 import { listShares } from "~/server/shares/service.server";
+import { directoryUrl } from "~/utils/directory-links";
 import { resolveDirectory } from "~/utils/directory-tree";
 import type { Route } from "./+types/home";
 
@@ -30,6 +32,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 				getFileTree(CONFIG.filesDir),
 				listShares(shareStore, CONFIG.filesDir),
 			]);
+			const requestedPath = new URL(request.url).searchParams.get("path") || "";
+			const { path } = resolveDirectory(fileTree, requestedPath);
+			if (path !== requestedPath) throw redirect(directoryUrl("/", path));
 			logger.debug(
 				{
 					component: "file-browser",
@@ -40,10 +45,12 @@ export async function loader({ request }: Route.LoaderArgs) {
 			);
 			return {
 				fileTree,
+				path,
 				shares,
 				maxUploadBytes: CONFIG.maxUploadBytes,
 			};
 		} catch (error) {
+			if (error instanceof Response) throw error;
 			logger.error(
 				{
 					err: error,
@@ -58,8 +65,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 export default function Home({ loaderData }: Route.ComponentProps) {
 	const t = useTranslation();
-	const [requestedPath, setPath] = useState("");
-	const { path } = resolveDirectory(loaderData.fileTree, requestedPath);
+	const { path } = loaderData;
 	const fileInput = useRef<HTMLInputElement>(null);
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	return (
@@ -67,7 +73,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 			<FileBrowser
 				fileTree={loaderData.fileTree}
 				path={path}
-				onNavigate={setPath}
+				directoryUrl={(path) => directoryUrl("/", path)}
 				shares={loaderData.shares}
 				onShare={setSelectedPath}
 				onUpload={() => fileInput.current?.click()}

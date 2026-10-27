@@ -1,4 +1,14 @@
-import { Alert, Button, Chip, Paper, Stack, Typography } from "@mui/material";
+import LinkOffOutlined from "@mui/icons-material/LinkOffOutlined";
+import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
+import {
+	Alert,
+	Chip,
+	IconButton,
+	Paper,
+	Stack,
+	Tooltip,
+	Typography,
+} from "@mui/material";
 import { useFetcher } from "react-router";
 import { useTranslation } from "~/i18n";
 import type { ShareActionResult, ShareSummary } from "~/types/shares";
@@ -17,8 +27,17 @@ function ShareEntry({
 	const valid = share.status === "valid";
 	return (
 		<Stack spacing={1} sx={{ pt: 2, borderTop: 1, borderColor: "divider" }}>
-			<Stack direction="row" spacing={1} sx={{ alignItems: "start" }}>
-				<Typography variant="body2" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+			<Stack
+				direction="row"
+				spacing={0.5}
+				sx={{ alignItems: "center", minWidth: 0 }}
+			>
+				<Typography
+					variant="body2"
+					title={share.targetPath}
+					noWrap
+					sx={{ flex: 1, minWidth: 0 }}
+				>
 					{share.targetPath}
 				</Typography>
 				<Chip
@@ -27,29 +46,35 @@ function ShareEntry({
 					color={valid ? "success" : "default"}
 					variant="outlined"
 				/>
-			</Stack>
-			{valid && <ShareLinkControls shareId={share.id} disabled={busy} />}
-			<Stack direction="row" spacing={1}>
-				<Button
-					size="small"
-					disabled={busy}
-					onClick={() => onManage(share.targetPath)}
-				>
-					{valid ? t("管理分享") : t("重新分享")}
-				</Button>
-				<Button
-					size="small"
-					color="error"
-					disabled={busy}
-					onClick={() =>
-						fetcher.submit(
-							{ shareId: share.id },
-							{ method: "post", action: "/shares/revoke" },
-						)
-					}
-				>
-					{busy ? t("取消中…") : t("取消发布")}
-				</Button>
+				{valid && (
+					<ShareLinkControls shareId={share.id} disabled={busy} compact />
+				)}
+				<Tooltip title={valid ? t("管理分享") : t("重新分享")}>
+					<IconButton
+						size="small"
+						disabled={busy}
+						aria-label={`${valid ? t("管理分享") : t("重新分享")} ${share.targetPath}`}
+						onClick={() => onManage(share.targetPath)}
+					>
+						<SettingsOutlined fontSize="small" />
+					</IconButton>
+				</Tooltip>
+				<Tooltip title={busy ? t("取消中…") : t("取消发布")}>
+					<IconButton
+						size="small"
+						color="error"
+						aria-label={`${t("取消发布")} ${share.targetPath}`}
+						disabled={busy}
+						onClick={() =>
+							fetcher.submit(
+								{ shareId: share.id },
+								{ method: "post", action: "/shares/revoke" },
+							)
+						}
+					>
+						<LinkOffOutlined fontSize="small" />
+					</IconButton>
+				</Tooltip>
 			</Stack>
 			{fetcher.data?.error && (
 				<Alert severity="error">{t(fetcher.data.error)}</Alert>

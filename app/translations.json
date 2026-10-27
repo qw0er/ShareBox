@@ -175,7 +175,15 @@
 		"可选择当前文件夹，或返回上级目录。": "Choose this folder or return to a parent folder.",
 		"发布分享？": "Publish share?",
 		"分享后，任何拥有链接的人都可以访问此内容。目录分享包含所有当前和后续新增的子项。取消发布可阻止后续访问。": "Anyone with the link can access this content. Directory shares include all current and future descendants. Revoking prevents future access.",
-		"此目录已公开，上传或添加的内容将对拥有分享链接的人可见。": "This directory is published. Uploaded or added content will be visible to anyone with its share link."
+		"此目录已公开，上传或添加的内容将对拥有分享链接的人可见。": "This directory is published. Uploaded or added content will be visible to anyone with its share link.",
+		"公开分享": "Public share",
+		"由 ShareBox 提供文件分享": "File sharing powered by ShareBox",
+		"共享文件夹": "Shared folder",
+		"浏览文件夹，下载你需要的文件。": "Browse folders and download the files you need.",
+		"分享不可用": "Share unavailable",
+		"暂时无法打开分享": "Unable to open this share",
+		"链接已失效或内容不存在，请联系分享者。": "This link has expired or the content is unavailable. Please contact the person who shared it.",
+		"请稍后刷新页面重试。": "Please refresh the page and try again later."
 	},
 	"server": {
 		"Only regular files can be shared": "只能分享普通文件",

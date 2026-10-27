@@ -28,7 +28,7 @@ import TransferDialog, { type TransferTarget } from "./TransferDialog";
 
 function ManagedEntry({
 	node,
-	onNavigate,
+	directoryUrl,
 	onShare,
 	onRename,
 	onRemove,
@@ -36,7 +36,7 @@ function ManagedEntry({
 	shared,
 }: {
 	node: FileNode;
-	onNavigate: (path: string) => void;
+	directoryUrl: (path: string) => string;
 	onShare: (path: string) => void;
 	onRename: (node: FileNode) => void;
 	onRemove: (node: FileNode) => void;
@@ -48,11 +48,10 @@ function ManagedEntry({
 	return (
 		<Stack direction="row" sx={{ borderTop: 1, borderColor: "divider" }}>
 			<ButtonBase
-				component={directory ? "button" : Link}
-				to={directory ? undefined : privateDownloadUrl(node.path)}
+				component={Link}
+				to={directory ? directoryUrl(node.path) : privateDownloadUrl(node.path)}
 				{...(!directory ? { reloadDocument: true } : {})}
 				download={directory ? undefined : node.name}
-				onClick={directory ? () => onNavigate(node.path) : undefined}
 				aria-label={`${directory ? t("查看目录") : t("下载")} ${node.name}`}
 				sx={{ ...fileEntryButtonSx, flex: 1, minWidth: 0 }}
 			>
@@ -95,11 +94,11 @@ export default function FileBrowser({
 	onShare,
 	onUpload,
 	path: requestedPath,
-	onNavigate,
+	directoryUrl,
 }: {
 	onUpload: () => void;
 	path: string;
-	onNavigate: (path: string) => void;
+	directoryUrl: (path: string) => string;
 	fileTree: FileNode[];
 	shares: ShareSummary[];
 	onShare: (path: string) => void;
@@ -129,7 +128,7 @@ export default function FileBrowser({
 				key={path}
 				path={path}
 				entries={entries}
-				onNavigate={onNavigate}
+				directoryUrl={directoryUrl}
 				toolbar={
 					<Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
 						<Button
@@ -151,7 +150,7 @@ export default function FileBrowser({
 				renderEntry={(node) => (
 					<ManagedEntry
 						node={node}
-						onNavigate={onNavigate}
+						directoryUrl={directoryUrl}
 						onShare={onShare}
 						shared={shares.some((share) => share.targetPath === node.path)}
 						onRename={setRenameTarget}

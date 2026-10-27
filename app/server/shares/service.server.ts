@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
+import { redirect } from "react-router";
 import type { ShareSummary } from "~/types/shares";
+import { sharedDownloadUrl } from "~/utils/directory-links";
 import { deliverFile } from "../files/delivery.server";
 import {
 	INVALID_PATH_MESSAGE,
@@ -7,7 +9,10 @@ import {
 	SYMLINK_MESSAGE,
 } from "../files/paths.server";
 import { logger } from "../logger.server";
-import { browseDirectoryShare } from "./directory.server";
+import {
+	downloadDirectoryShare,
+	readSharedDirectory,
+} from "./directory.server";
 import type { ShareStore } from "./store.server";
 
 export const SHARE_HEADERS = {
@@ -63,7 +68,7 @@ export async function downloadShare(
 	try {
 		const share = isShareId(id) ? store.find(id) : undefined;
 		if (share?.kind === "directory") {
-			const response = await browseDirectoryShare(filesDir, share, request);
+			const response = await downloadDirectoryShare(filesDir, share, request);
 			for (const [key, value] of Object.entries(SHARE_HEADERS))
 				response.headers.set(key, value);
 			return response;
@@ -123,4 +128,47 @@ export async function listShares(
 			};
 		}),
 	);
+}
+
+/** Page loaders return only scoped directory data; binary downloads use a resource route. */
+export async function loadSharePage(
+	store: ShareStore,
+	filesDir: string,
+	id: string,
+	request: Request,
+) {
+	try {
+		const share = isShareId(id) ? store.find(id) : undefined;
+		if (!share) throw new Response("File not found", { status: 404 });
+		if (share.kind === "file") {
+			const { targetPath } = await resolveEntry(filesDir, share.targetPath);
+			const stats = await fs.lstat(targetPath, { bigint: true });
+			if (
+				!stats.isFile() ||
+				stats.dev.toString() !== share.targetDev ||
+				stats.ino.toString() !== share.targetIno
+			)
+				throw new Response("File not found", { status: 404 });
+			throw redirect(sharedDownloadUrl(id));
+		}
+		return await readSharedDirectory(filesDir, share, request);
+	} catch (error) {
+		if (!(error instanceof Response) && !missingTarget(error))
+			logger.error(
+				{ component: "shares", err: error },
+				"Unable to load shared directory",
+			);
+		const response =
+			error instanceof Response
+				? error
+				: new Response(
+						missingTarget(error)
+							? "File not found"
+							: "Unable to read the directory right now",
+						{ status: missingTarget(error) ? 404 : 500 },
+					);
+		for (const [key, value] of Object.entries(SHARE_HEADERS))
+			response.headers.set(key, value);
+		throw response;
+	}
 }

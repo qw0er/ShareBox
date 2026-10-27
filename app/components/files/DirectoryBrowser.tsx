@@ -39,6 +39,7 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 	renderEntry,
 	toolbar,
 	foldersOnly = false,
+	rootLabel,
 }: {
 	path: string;
 	entries: Entry[];
@@ -47,6 +48,7 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 	renderEntry: (entry: Entry) => ReactNode;
 	toolbar?: ReactNode;
 	foldersOnly?: boolean;
+	rootLabel?: string;
 }) {
 	const t = useTranslation();
 	const [filter, setFilter] = useState("");
@@ -88,7 +90,7 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 							onClick={onNavigate ? () => onNavigate("") : undefined}
 							underline="hover"
 						>
-							{t("全部文件")}
+							{rootLabel ?? t("全部文件")}
 						</Link>
 						{segments.map((name, index) =>
 							index === segments.length - 1 ? (

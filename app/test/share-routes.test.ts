@@ -8,7 +8,7 @@ let root: string;
 let cookie: string;
 let createRoute: typeof import("../routes/shares-create");
 let revokeRoute: typeof import("../routes/shares-revoke");
-let shareRoute: typeof import("../routes/share");
+let shareRoute: typeof import("../routes/share-download");
 let config: typeof import("../server/config.server");
 beforeAll(async () => {
 	root = await fs.mkdtemp(path.join(os.tmpdir(), "sharebox-share-routes-"));
@@ -28,7 +28,7 @@ beforeAll(async () => {
 		.run();
 	createRoute = await import("../routes/shares-create");
 	revokeRoute = await import("../routes/shares-revoke");
-	shareRoute = await import("../routes/share");
+	shareRoute = await import("../routes/share-download");
 	await fs.writeFile(
 		path.join(config.CONFIG.filesDir, "file.txt"),
 		"shared contents",
@@ -365,4 +365,101 @@ it("reports a completed move with a warning when share synchronization fails", a
 	} finally {
 		spy.mockRestore();
 	}
+});
+
+it("loads only the requested public directory and redirects legacy file links to downloads", async () => {
+	const page = await import("../routes/share");
+	const { shareStore } = await import("../server/shares/runtime.server");
+	const { publishFile } = await import("../server/shares/service.server");
+	const files = config.CONFIG.filesDir;
+	await fs.mkdir(path.join(files, "public-page/nested"), { recursive: true });
+	await fs.writeFile(
+		path.join(files, "public-page/nested/file #?.txt"),
+		"public data",
+	);
+	await fs.writeFile(path.join(files, "private-sibling.txt"), "private data");
+	const id = await publishFile(shareStore, files, "public-page");
+	const invoke = (relative: string, method = "GET") =>
+		page.loader({
+			request: new Request(
+				`http://localhost/s/${id}?${new URLSearchParams({ path: relative })}`,
+				{ method },
+			),
+			params: { shareId: id },
+		} as Parameters<typeof page.loader>[0]);
+	const root = await invoke("");
+	expect(root.data).toMatchObject({
+		name: "public-page",
+		path: "",
+		shareId: id,
+		entries: [{ name: "nested", path: "nested", type: "directory" }],
+	});
+	expect(JSON.stringify(root.data)).not.toContain("private-sibling");
+	expect(root.init?.headers).toMatchObject({ "Cache-Control": "no-store" });
+	const child = await invoke("nested");
+	expect(child.data.entries[0]).toMatchObject({
+		name: "file #?.txt",
+		size: 11,
+	});
+	const legacy = await invoke("nested/file #?.txt").catch(
+		(error: Response) => error,
+	);
+	expect(legacy).toBeInstanceOf(Response);
+	if (legacy instanceof Response) {
+		expect(legacy.status).toBe(302);
+		const url = new URL(
+			legacy.headers.get("Location") || "",
+			"http://localhost",
+		);
+		expect(url.pathname).toBe(`/s/${id}/download`);
+		expect(url.searchParams.get("path")).toBe("nested/file #?.txt");
+	}
+	for (const value of [
+		"../private-sibling.txt",
+		"nested/../../private-sibling.txt",
+		"missing",
+	])
+		await expect(invoke(value)).rejects.toMatchObject({ status: 404 });
+	shareStore.revoke(id);
+	await expect(invoke("")).rejects.toMatchObject({ status: 404 });
+	await expect(invoke("nested", "HEAD")).rejects.toMatchObject({ status: 404 });
+});
+
+it("keeps file share entry links compatible and rejects unknown page shares", async () => {
+	const page = await import("../routes/share");
+	const { shareStore } = await import("../server/shares/runtime.server");
+	const { publishFile } = await import("../server/shares/service.server");
+	const id = await publishFile(shareStore, config.CONFIG.filesDir, "file.txt");
+	const args = (shareId: string) =>
+		({
+			request: new Request(`http://localhost/s/${shareId}`),
+			params: { shareId },
+		}) as Parameters<typeof page.loader>[0];
+	await expect(page.loader(args(id))).rejects.toMatchObject({ status: 302 });
+	shareStore.revoke(id);
+	await expect(page.loader(args(id))).rejects.toMatchObject({ status: 404 });
+	await expect(page.loader(args("invalid"))).rejects.toMatchObject({
+		status: 404,
+	});
+});
+
+it("restores the administrator directory from the URL and redirects deleted directories to their parent", async () => {
+	const home = await import("../routes/home");
+	const files = config.CONFIG.filesDir;
+	await fs.mkdir(path.join(files, "route-folder/中文 #?"), { recursive: true });
+	const requested = "route-folder/中文 #?";
+	const invoke = (relative: string) =>
+		home.loader({
+			request: new Request(
+				`http://localhost/?${new URLSearchParams({ path: relative })}`,
+				{ headers: { Cookie: cookie } },
+			),
+		} as Parameters<typeof home.loader>[0]);
+	expect((await invoke(requested)).path).toBe(requested);
+	await fs.rmdir(path.join(files, requested));
+	const response = await invoke(requested).catch((error: Response) => error);
+	expect(response).toBeInstanceOf(Response);
+	if (response instanceof Response)
+		expect(response.headers.get("Location")).toBe("/?path=route-folder");
+	expect((await invoke("")).path).toBe("");
 });
