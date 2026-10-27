@@ -213,3 +213,76 @@ it("rejects oversized login bodies before password verification", async () => {
 		init: { status: 400 },
 	});
 });
+
+it("changes the password, invalidates sessions, and accepts only the new password", async () => {
+	let storedHash = passwordHash;
+	const auth = createAuth(settings(), (oldHash, newHash) => {
+		if (oldHash !== storedHash) return false;
+		storedHash = newHash;
+		return true;
+	});
+	const cookie = await loginCookie(auth);
+	const change = (
+		currentPassword: string,
+		newPassword: string,
+		confirmPassword: string,
+		origin = "http://localhost",
+		session = cookie,
+	) =>
+		new Request("http://localhost/password", {
+			method: "POST",
+			headers: { Origin: origin, Cookie: session },
+			body: new URLSearchParams({
+				currentPassword,
+				newPassword,
+				confirmPassword,
+			}),
+		});
+	await expect(
+		auth.changePassword(
+			change(
+				"test-password",
+				"new-password",
+				"new-password",
+				"https://evil.example",
+			),
+		),
+	).rejects.toMatchObject({ status: 403 });
+	await expect(
+		auth.changePassword(
+			change(
+				"test-password",
+				"new-password",
+				"new-password",
+				"http://localhost",
+				"",
+			),
+		),
+	).rejects.toMatchObject({ status: 401 });
+	expect(
+		await auth.changePassword(change("wrong", "new-password", "new-password")),
+	).toMatchObject({ init: { status: 400 } });
+	expect(
+		await auth.changePassword(change("test-password", "short", "short")),
+	).toMatchObject({ init: { status: 400 } });
+	expect(
+		await auth.changePassword(
+			change("test-password", "new-password", "different"),
+		),
+	).toMatchObject({ init: { status: 400 } });
+	expect(storedHash).toBe(passwordHash);
+	const result = await auth.changePassword(
+		change("test-password", "new-password", "new-password"),
+	);
+	expect(result).toBeInstanceOf(Response);
+	if (!(result instanceof Response)) throw new Error("Expected redirect");
+	expect(result.status).toBe(303);
+	expect(result.headers.get("Location")).toBe("/login");
+	expect(await auth.isAuthenticated(request("GET", cookie))).toBe(false);
+	expect(await auth.login(loginRequest())).toMatchObject({
+		init: { status: 400 },
+	});
+	expect(await auth.login(loginRequest("new-password"))).toBeInstanceOf(
+		Response,
+	);
+});

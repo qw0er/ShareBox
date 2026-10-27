@@ -145,3 +145,25 @@ it("refuses to reset an uninitialized state without creating a database", async 
 	).rejects.toThrow();
 	expect(fs.readdirSync(empty)).toEqual([]);
 });
+
+it("persists a password hash only when the expected credentials still match", async () => {
+	const { replaceAdministratorPassword } = await import(
+		"../server/administrator.server"
+	);
+	const { hashPassword } = await import("../server/password.server");
+	const before = await initializeAdministrator(database, vi.fn());
+	const next = await hashPassword("new-password");
+	expect(
+		replaceAdministratorPassword(database, before.passwordHash, next),
+	).toBe(true);
+	expect(
+		replaceAdministratorPassword(
+			database,
+			before.passwordHash,
+			await hashPassword("another-password"),
+		),
+	).toBe(false);
+	const after = await initializeAdministrator(database, vi.fn());
+	expect(await verifyPassword("new-password", after.passwordHash)).toBe(true);
+	expect(after.secret).toBe(before.secret);
+});

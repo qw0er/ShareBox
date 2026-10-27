@@ -4,6 +4,7 @@ export default [
 	index("routes/home.tsx"),
 	route("login", "routes/login.tsx"),
 	route("logout", "routes/logout.ts"),
+	route("password", "routes/password.tsx"),
 	route("download", "routes/download.ts"),
 	route("shares/create", "routes/shares-create.ts"),
 	route("shares/revoke", "routes/shares-revoke.ts"),

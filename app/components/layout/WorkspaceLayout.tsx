@@ -1,4 +1,5 @@
 import Inventory2Outlined from "@mui/icons-material/Inventory2Outlined";
+import KeyOutlined from "@mui/icons-material/KeyOutlined";
 import LogoutOutlined from "@mui/icons-material/LogoutOutlined";
 import {
 	AppBar,
@@ -10,7 +11,7 @@ import {
 	Toolbar,
 	Typography,
 } from "@mui/material";
-import { Form, useNavigation } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 import ThemeModeButton from "~/components/layout/ThemeModeButton";
 
 export default function WorkspaceLayout({
@@ -54,6 +55,14 @@ export default function WorkspaceLayout({
 						</Typography>
 						<Box sx={{ flex: 1 }} />
 						<Chip label="管理工作区" size="small" variant="outlined" />
+						<Button
+							component={Link}
+							to="/password"
+							size="small"
+							startIcon={<KeyOutlined />}
+						>
+							修改密码
+						</Button>
 						<Form method="post" action="/logout">
 							<Button
 								type="submit"

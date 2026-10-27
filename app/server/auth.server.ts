@@ -1,10 +1,13 @@
 import { createHmac } from "node:crypto";
 import { createCookieSessionStorage, data, redirect } from "react-router";
-import { initializeAdministrator } from "./administrator.server";
+import {
+	initializeAdministrator,
+	replaceAdministratorPassword,
+} from "./administrator.server";
 import { CONFIG, DATABASE } from "./config.server";
 import { logger } from "./logger.server";
 import { readLoginForm } from "./login-form.server";
-import { verifyPassword } from "./password.server";
+import { hashPassword, verifyPassword } from "./password.server";
 
 const config = await loadAuthConfig();
 async function loadAuthConfig() {
@@ -26,7 +29,12 @@ async function loadAuthConfig() {
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const WINDOW_MS = 15 * 60 * 1000;
 
-export function createAuth(settings: NonNullable<typeof config>) {
+export function createAuth(
+	initialSettings: NonNullable<typeof config>,
+	savePassword = (oldHash: string, newHash: string) =>
+		replaceAdministratorPassword(DATABASE, oldHash, newHash),
+) {
+	const settings = { ...initialSettings };
 	const storage = createCookieSessionStorage<{
 		user: string;
 		expiresAt: number;
@@ -42,18 +50,21 @@ export function createAuth(settings: NonNullable<typeof config>) {
 			secrets: [settings.secret],
 		},
 	});
-	const version = createHmac("sha256", settings.secret)
-		.update(settings.username)
-		.update("\0")
-		.update(settings.passwordHash)
-		.digest("hex");
+	const getVersion = () =>
+		createHmac("sha256", settings.secret)
+			.update(settings.username)
+			.update("\0")
+			.update(settings.passwordHash)
+			.digest("hex");
 	let attempts = 0;
 	let windowStart = 0;
+	let changeAttempts = 0;
+	let changeWindowStart = 0;
 	async function isAuthenticated(request: Request) {
 		const session = await storage.getSession(request.headers.get("Cookie"));
 		return (
 			session.get("user") === settings.username &&
-			session.get("version") === version &&
+			session.get("version") === getVersion() &&
 			typeof session.get("expiresAt") === "number" &&
 			(session.get("expiresAt") ?? 0) > Date.now()
 		);
@@ -132,7 +143,7 @@ export function createAuth(settings: NonNullable<typeof config>) {
 		const session = await storage.getSession();
 		session.set("user", settings.username);
 		session.set("expiresAt", Date.now() + SESSION_SECONDS * 1000);
-		session.set("version", version);
+		session.set("version", getVersion());
 		logger.info({ component: "auth" }, "Administrator logged in");
 		return redirect("/", {
 			status: 303,
@@ -142,6 +153,72 @@ export function createAuth(settings: NonNullable<typeof config>) {
 			},
 		});
 	}
+	async function changePassword(request: Request) {
+		await requireAdmin(request);
+		assertAuthOrigin(request);
+		const now = Date.now();
+		if (now - changeWindowStart >= WINDOW_MS) {
+			changeWindowStart = now;
+			changeAttempts = 0;
+		}
+		if (changeAttempts >= 10) {
+			logger.warn({ component: "auth" }, "Password change rate limit reached");
+			return data({ error: "尝试过于频繁，请稍后重试。" }, { status: 429 });
+		}
+		changeAttempts++;
+		let form: URLSearchParams;
+		try {
+			form = await readLoginForm(request);
+		} catch {
+			logger.warn(
+				{ component: "auth" },
+				"Rejected invalid password change form",
+			);
+			return data({ error: "表单无效，请刷新页面后重试。" }, { status: 400 });
+		}
+		const current = form.get("currentPassword");
+		const next = form.get("newPassword");
+		const confirmation = form.get("confirmPassword");
+		if (
+			!current ||
+			!next ||
+			next.length < 8 ||
+			next.length > 1024 ||
+			next !== confirmation
+		) {
+			return data(
+				{ error: "新密码须为 8 至 1024 个字符，且两次输入必须一致。" },
+				{ status: 400 },
+			);
+		}
+		const oldHash = settings.passwordHash;
+		if (!(await verifyPassword(current, oldHash))) {
+			logger.warn(
+				{ component: "auth" },
+				"Password change rejected: incorrect current password",
+			);
+			return data({ error: "当前密码错误。" }, { status: 400 });
+		}
+		const newHash = await hashPassword(next);
+		if (!savePassword(oldHash, newHash)) {
+			logger.warn(
+				{ component: "auth" },
+				"Password change rejected: credentials changed concurrently",
+			);
+			return data(
+				{ error: "密码已发生更改，请重新登录后重试。" },
+				{ status: 409 },
+			);
+		}
+		settings.passwordHash = newHash;
+		changeAttempts = 0;
+		logger.info(
+			{ component: "auth" },
+			"Administrator password changed; sessions invalidated",
+		);
+		return logout(request);
+	}
+
 	async function logout(request: Request) {
 		assertAuthOrigin(request);
 		const session = await storage.getSession(request.headers.get("Cookie"));
@@ -154,7 +231,7 @@ export function createAuth(settings: NonNullable<typeof config>) {
 			},
 		});
 	}
-	return { isAuthenticated, requireAdmin, login, logout };
+	return { isAuthenticated, requireAdmin, login, logout, changePassword };
 }
 
 export function assertAuthOrigin(request: Request) {

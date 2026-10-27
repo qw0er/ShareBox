@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { StateDatabase } from "./db/client.server.ts";
 import { adminCredentials } from "./db/schema.ts";
 import { logger } from "./logger.server.ts";
@@ -118,4 +118,23 @@ export async function resetAdministrator(
 	);
 	printPassword(credentials.username, generated.password, write);
 	return credentials;
+}
+
+export function replaceAdministratorPassword(
+	database: StateDatabase,
+	expectedHash: string,
+	newHash: string,
+) {
+	return (
+		database.db
+			.update(adminCredentials)
+			.set({ passwordHash: newHash })
+			.where(
+				and(
+					eq(adminCredentials.id, 1),
+					eq(adminCredentials.passwordHash, expectedHash),
+				),
+			)
+			.run().changes === 1
+	);
 }
