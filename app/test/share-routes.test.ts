@@ -253,3 +253,116 @@ it("reports share sync failure without misreporting a completed filesystem opera
 		sync.mockRestore();
 	}
 });
+
+it("guards move and copy routes before mutations and rejects cross-origin requests", async () => {
+	for (const operation of ["move", "copy"] as const) {
+		const invoke = async (request: Request) => {
+			if (operation === "move") {
+				const route = await import("../routes/files-move");
+				return route.action({ request } as Parameters<typeof route.action>[0]);
+			}
+			const route = await import("../routes/files-copy");
+			return route.action({ request } as Parameters<typeof route.action>[0]);
+		};
+		await expect(
+			invoke(
+				new Request(`http://localhost/files/${operation}`, { method: "POST" }),
+			),
+		).rejects.toMatchObject({ status: 401 });
+		const result = await invoke(
+			new Request(`http://localhost/files/${operation}`, {
+				method: "POST",
+				headers: { Cookie: cookie, Origin: "https://evil.example" },
+				body: new URLSearchParams({ path: "file.txt", destination: "" }),
+			}),
+		);
+		expect(result.error).toContain("Invalid request origin");
+	}
+});
+
+it.each(["file", "folder"])(
+	"moves a shared %s without breaking its link and copies it privately",
+	async (kind) => {
+		const move = await import("../routes/files-move");
+		const copy = await import("../routes/files-copy");
+		const { shareStore } = await import("../server/shares/runtime.server");
+		const { publishFile } = await import("../server/shares/service.server");
+		const files = config.CONFIG.filesDir;
+		const source = `transfer-${kind}`;
+		const nested = kind === "folder" ? "/nested.txt" : "";
+		if (kind === "folder") await fs.mkdir(path.join(files, source));
+		await fs.writeFile(path.join(files, source + nested), "transfer contents");
+		const destination = `destination-${kind}`;
+		await fs.mkdir(path.join(files, destination));
+		const id = await publishFile(shareStore, files, source + nested);
+		const request = (operation: string, from: string, to: string) =>
+			new Request(`http://localhost/files/${operation}`, {
+				method: "POST",
+				headers: { Cookie: cookie, Origin: "http://localhost" },
+				body: new URLSearchParams({ path: from, destination: to }),
+			});
+		expect(
+			await move.action({
+				request: request("move", source, destination),
+			} as Parameters<typeof move.action>[0]),
+		).toEqual({ success: true });
+		expect(shareStore.find(id)?.targetPath).toBe(
+			`${destination}/${source}${nested}`,
+		);
+		const downloaded = await shareRoute.loader(
+			shareArgs(new Request(`http://localhost/s/${id}`), id),
+		);
+		expect(downloaded.status).toBe(200);
+		expect(await downloaded.text()).toBe("transfer contents");
+		const count = shareStore.list().length;
+		expect(
+			await copy.action({
+				request: request("copy", `${destination}/${source}`, ""),
+			} as Parameters<typeof copy.action>[0]),
+		).toEqual({ success: true });
+		expect(shareStore.list()).toHaveLength(count);
+		expect(shareStore.find(id)?.targetPath).toBe(
+			`${destination}/${source}${nested}`,
+		);
+		const original = await fs.stat(
+			path.join(files, destination, source + nested),
+		);
+		const copied = await fs.stat(path.join(files, source + nested));
+		expect(copied.ino).not.toBe(original.ino);
+		expect(await fs.readFile(path.join(files, source + nested), "utf8")).toBe(
+			"transfer contents",
+		);
+	},
+);
+it("reports a completed move with a warning when share synchronization fails", async () => {
+	const move = await import("../routes/files-move");
+	const { shareStore } = await import("../server/shares/runtime.server");
+	const files = config.CONFIG.filesDir;
+	await fs.writeFile(path.join(files, "move-sync.txt"), "keep");
+	await fs.mkdir(path.join(files, "move-sync-target"));
+	const spy = vi.spyOn(shareStore, "renamePaths").mockImplementationOnce(() => {
+		throw new Error("database unavailable");
+	});
+	try {
+		const result = await move.action({
+			request: new Request("http://localhost/files/move", {
+				method: "POST",
+				headers: { Cookie: cookie, Origin: "http://localhost" },
+				body: new URLSearchParams({
+					path: "move-sync.txt",
+					destination: "move-sync-target",
+				}),
+			}),
+		} as Parameters<typeof move.action>[0]);
+		expect(result.success).toBe(true);
+		expect(result.warning).toContain("The file operation succeeded");
+		expect(
+			await fs.readFile(
+				path.join(files, "move-sync-target/move-sync.txt"),
+				"utf8",
+			),
+		).toBe("keep");
+	} finally {
+		spy.mockRestore();
+	}
+});

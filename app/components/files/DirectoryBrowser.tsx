@@ -37,12 +37,16 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 	onNavigate,
 	directoryUrl,
 	renderEntry,
+	toolbar,
+	foldersOnly = false,
 }: {
 	path: string;
 	entries: Entry[];
 	onNavigate?: (path: string) => void;
 	directoryUrl?: (path: string) => string;
 	renderEntry: (entry: Entry) => ReactNode;
+	toolbar?: ReactNode;
+	foldersOnly?: boolean;
 }) {
 	const t = useTranslation();
 	const [filter, setFilter] = useState("");
@@ -123,6 +127,7 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 						{busy ? t("加载中") : t("刷新")}
 					</Button>
 				</Stack>
+				{toolbar}
 				<Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
 					<TextField
 						size="small"
@@ -152,7 +157,7 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 						{entries.some((entry) => entry.modifiedAt) && (
 							<MenuItem value="modified">{t("最近修改")}</MenuItem>
 						)}
-						<MenuItem value="size">{t("大小优先")}</MenuItem>
+						{!foldersOnly && <MenuItem value="size">{t("大小优先")}</MenuItem>}
 					</TextField>
 				</Stack>
 			</Stack>
@@ -197,12 +202,22 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 					>
 						<FolderOutlined sx={{ fontSize: 48, color: "text.secondary" }} />
 						<Typography sx={{ fontWeight: 600 }}>
-							{entries.length ? t("没有匹配的文件") : t("这个目录还没有文件")}
+							{entries.length
+								? t("没有匹配的文件")
+								: t(
+										foldersOnly
+											? "没有可选择的子文件夹。"
+											: "这个目录还没有文件",
+									)}
 						</Typography>
 						<Typography variant="body2" color="text.secondary">
 							{entries.length
 								? t("试试其他名称，或清空筛选条件。")
-								: t("文件添加后，点击刷新即可查看。")}
+								: t(
+										foldersOnly
+											? "可选择当前文件夹，或返回上级目录。"
+											: "文件添加后，点击刷新即可查看。",
+									)}
 						</Typography>
 					</Stack>
 				)}

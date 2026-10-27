@@ -5,7 +5,12 @@ import type {
 import { CONFIG } from "./config.server";
 import { logger } from "./logger.server";
 
-export type FileActionOperation = "remove" | "rename";
+export type FileActionOperation =
+	| "remove"
+	| "rename"
+	| "mkdir"
+	| "move"
+	| "copy";
 
 export type FileActionPreparation =
 	| { ok: true; context: FileActionContext }

@@ -80,7 +80,7 @@ export default function SharesPanel({
 				</Typography>
 				{!shares.length && (
 					<Typography variant="body2" color="text.secondary">
-						{t("暂无分享。在文件行点击分享按钮创建链接。")}
+						{t("暂无分享。在文件行的操作菜单中选择分享来创建链接。")}
 					</Typography>
 				)}
 				{shares.map((share) => (

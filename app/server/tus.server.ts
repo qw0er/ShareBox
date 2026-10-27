@@ -15,13 +15,22 @@ import path from "node:path";
 import { FileStore } from "@tus/file-store";
 import { MemoryLocker, Server } from "@tus/server";
 import { CONFIG } from "./config.server";
+import {
+	parseUploadDirectory,
+	resolveUploadDestination,
+} from "./files/upload-destination.server";
 import { logger, withoutRequestLogging } from "./logger.server";
 
 const uploadLogger = logger.child({ component: "uploads" });
 
 const TTL = 7 * 24 * 60 * 60 * 1000;
 const idPattern = /^[a-f0-9]{32}$/;
-type Receipt = { success: true; filename: string; size: number };
+type Receipt = {
+	success: true;
+	filename: string;
+	directory: string;
+	size: number;
+};
 type Upload = Awaited<ReturnType<FileStore["getUpload"]>>;
 
 function validateFileName(name: unknown): asserts name is string {
@@ -78,6 +87,7 @@ function uploadStatusMessage(status: number) {
 		412: "Upload protocol mismatch. Refresh the page and try again.",
 		413: "File exceeds the server size limit. Choose a smaller file.",
 		415: "Invalid upload data. Refresh the page and try again.",
+		422: "Upload destination is unavailable. Refresh the file list and select an existing folder.",
 		423: "Upload is being processed. Please try again later.",
 		429: "Too many upload requests. Please try again later.",
 	};
@@ -106,7 +116,11 @@ function parseUploadMetadata(upload: Pick<Upload, "metadata" | "size">) {
 			status_code: 400,
 			body: "Missing file size. Select the file and try again.",
 		};
-	return { filename, size: upload.size };
+	return {
+		filename,
+		directory: parseUploadDirectory(upload.metadata?.directory),
+		size: upload.size,
+	};
 }
 
 function isExpired(timestamp: number, now: number, ttl = TTL) {
@@ -132,6 +146,7 @@ function parseReceipt(
 	return {
 		success: true,
 		filename: receipt.filename,
+		directory: parseUploadDirectory(receipt.directory),
 		size: receipt.size as number | undefined,
 	};
 }
@@ -180,7 +195,7 @@ function completionHeaders(receipt: Receipt) {
 		"Cache-Control": "no-store",
 		"Upload-Offset": String(receipt.size),
 		"Upload-Length": String(receipt.size),
-		"Upload-Metadata": `filename ${Buffer.from(receipt.filename).toString("base64")}`,
+		"Upload-Metadata": `filename ${Buffer.from(receipt.filename).toString("base64")}${receipt.directory ? `,directory ${Buffer.from(receipt.directory).toString("base64")}` : ""}`,
 	};
 }
 
@@ -210,17 +225,22 @@ async function statIfExists(filename: string) {
 }
 
 async function validateUpload(upload: Upload, filesRoot: string) {
-	const { filename, size } = parseUploadMetadata(upload);
-	if (await statIfExists(path.join(filesRoot, filename)))
+	const { filename, directory, size } = parseUploadMetadata(upload);
+	const destination = await resolveUploadDestination(
+		filesRoot,
+		directory,
+		filename,
+	);
+	if (await statIfExists(destination))
 		throw {
 			status_code: 409,
 			body: "A file or folder with this name already exists.",
 		};
 	uploadLogger.info(
-		{ uploadId: upload.id, filename, size },
+		{ uploadId: upload.id, filename, directory, size },
 		"Upload creation accepted",
 	);
-	return { filename };
+	return { filename, ...(directory ? { directory } : {}) };
 }
 
 async function readReceipt(
@@ -240,7 +260,15 @@ async function readReceipt(
 		// Old /complete receipts did not store the size; resolve it outside the parser.
 		const size =
 			receipt.size ??
-			(await lstat(path.join(filesRoot, receipt.filename))).size;
+			(
+				await lstat(
+					await resolveUploadDestination(
+						filesRoot,
+						receipt.directory,
+						receipt.filename,
+					),
+				)
+			).size;
 		return { ...receipt, size };
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -384,22 +412,23 @@ export class UploadService {
 				);
 				return undefined;
 			}
-			const { filename, size } = parseUploadMetadata(upload);
+			const { filename, directory, size } = parseUploadMetadata(upload);
 			const startedAt = performance.now();
 			uploadLogger.debug(
-				{ uploadId: id, filename, size },
+				{ uploadId: id, filename, directory, size },
 				"Finalizing uploaded file",
 			);
 			await copyUploadedFile(
 				path.join(this.directory, id),
-				path.join(this.filesRoot, filename),
+				await resolveUploadDestination(this.filesRoot, directory, filename),
 			);
-			const completed: Receipt = { success: true, filename, size };
+			const completed: Receipt = { success: true, filename, directory, size };
 			await writeReceipt(path.join(this.receipts, id), completed);
 			uploadLogger.info(
 				{
 					uploadId: id,
 					filename,
+					directory,
 					size: upload.size,
 					durationMs: Math.round(performance.now() - startedAt),
 				},

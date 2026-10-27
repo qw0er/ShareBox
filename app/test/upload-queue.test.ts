@@ -318,3 +318,44 @@ it.each([401, 403, 409, 410, 413, 423, 429, 500, 0])(
 		expect(queue.tasks[0].error).not.toContain("/data/internal");
 	},
 );
+
+it("captures a destination per task and separates identical files in different folders", async () => {
+	const file = new File(["hello"], "test.txt", { lastModified: 1 });
+	queue.add([file], 100, "Docs/工作");
+	expect(queue.tasks).toHaveLength(2);
+	expect(queue.tasks[0].directory).toBe("");
+	expect(queue.tasks[1].directory).toBe("Docs/工作");
+	queue.add([file], 100, "Docs/工作");
+	expect(queue.tasks).toHaveLength(2);
+	await queue.start(queue.tasks[1].id, 100);
+	expect(clients[0].options.metadata).toEqual({
+		filename: "test.txt",
+		directory: "Docs/工作",
+	});
+});
+it("persists the upload destination and resumes only the matching folder task", async () => {
+	const file = new File(["hello"], "test.txt", { lastModified: 1 });
+	queue.add([file], 100, "Docs");
+	const id = queue.tasks[1].id;
+	await queue.start(id, 100);
+	clients[0].options.onAfterResponse(
+		mockRequest("POST"),
+		mockResponse(201, url),
+	);
+	queue.dispose();
+	queue = new UploadQueue(onComplete);
+	queue.restore();
+	expect(queue.tasks[1]).toMatchObject({
+		id,
+		directory: "Docs",
+		url,
+		file: undefined,
+	});
+	queue.add([file], 100);
+	expect(queue.tasks[1].file).toBeUndefined();
+	queue.add([file], 100, "Docs");
+	expect(queue.tasks).toHaveLength(2);
+	await queue.start(id, 100);
+	expect(clients[1].options.uploadUrl).toBe(url);
+	expect(clients[1].options.metadata?.directory).toBe("Docs");
+});

@@ -19,10 +19,12 @@ export default function RenameDialog({
 	node,
 	onClose,
 	onWarning,
+	onSuccess,
 }: {
 	node: FileNode;
 	onClose: () => void;
 	onWarning: (message: string) => void;
+	onSuccess: () => void;
 }) {
 	const t = useTranslation();
 	const fetcher = useFetcher<typeof action>();
@@ -33,9 +35,10 @@ export default function RenameDialog({
 	useEffect(() => {
 		if (!busy && fetcher.data?.success) {
 			if (fetcher.data.warning) onWarning(fetcher.data.warning);
+			onSuccess();
 			onClose();
 		}
-	}, [busy, fetcher.data, onClose, onWarning]);
+	}, [busy, fetcher.data, onClose, onWarning, onSuccess]);
 	return (
 		<Dialog
 			open

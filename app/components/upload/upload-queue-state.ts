@@ -39,11 +39,13 @@ export function addFiles(
 	files: File[],
 	maxSize: number,
 	createId: () => string,
+	directory = "",
 ): UploadTask[] {
 	let next = tasks;
 	for (const file of files) {
 		const existing = next.find(
 			(task) =>
+				(task.directory || "") === directory &&
 				task.name === file.name &&
 				task.size === file.size &&
 				task.lastModified === file.lastModified &&
@@ -61,6 +63,7 @@ export function addFiles(
 			{
 				id: createId(),
 				name: file.name,
+				directory,
 				size: file.size,
 				lastModified: file.lastModified,
 				file,
@@ -87,6 +90,8 @@ export function parseStoredTasks(
 				(task) =>
 					typeof task.id === "string" &&
 					typeof task.name === "string" &&
+					(task.directory === undefined ||
+						typeof task.directory === "string") &&
 					Number.isSafeInteger(task.size) &&
 					task.size >= 0 &&
 					(!task.url || isValidUrl(task.url)),
@@ -94,6 +99,7 @@ export function parseStoredTasks(
 			.slice(0, MAX_TASKS)
 			.map(({ transferred: _legacyTransferred, ...task }) => ({
 				...task,
+				directory: task.directory || "",
 				file: undefined,
 				status: "paused" as const,
 			}));

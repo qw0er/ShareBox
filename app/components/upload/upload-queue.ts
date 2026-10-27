@@ -21,6 +21,7 @@ export type UploadStatus =
 export type UploadTask = {
 	id: string;
 	name: string;
+	directory?: string;
 	size: number;
 	lastModified: number;
 	bytes: number;
@@ -58,6 +59,8 @@ function uploadFailureMessage(error: Error) {
 			return "上传发生冲突，请检查是否有同名文件，再重试。";
 		case 413:
 			return "文件超过服务器大小限制，请选择较小的文件。";
+		case 422:
+			return "上传目标目录不可用，请刷新文件列表并选择已有文件夹。";
 		case 423:
 			return "上传任务正在被处理，请稍后重试。";
 		case 429:
@@ -130,9 +133,13 @@ export class UploadQueue {
 	private statusOf(id: string) {
 		return this.tasks.find((task) => task.id === id)?.status;
 	}
-	add(files: File[], maxSize: number) {
-		this.tasks = addFiles(this.tasks, files, maxSize, () =>
-			crypto.randomUUID(),
+	add(files: File[], maxSize: number, directory = "") {
+		this.tasks = addFiles(
+			this.tasks,
+			files,
+			maxSize,
+			() => crypto.randomUUID(),
+			directory,
 		);
 		this.emit();
 	}
@@ -169,7 +176,10 @@ export class UploadQueue {
 				},
 				// The queue persists URLs together with visible task records.
 				storeFingerprintForResuming: false,
-				metadata: { filename: task.name },
+				metadata: {
+					filename: task.name,
+					...(task.directory ? { directory: task.directory } : {}),
+				},
 				onAfterResponse: (request, response) => {
 					// tus-js-client otherwise creates a new upload after a failed HEAD.
 					// Keep the URL and accepted bytes when completion is temporarily failing.

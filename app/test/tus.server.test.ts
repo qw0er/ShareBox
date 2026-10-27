@@ -7,6 +7,7 @@ import {
 	readFile,
 	rename,
 	rm,
+	symlink,
 	utimes,
 	writeFile,
 } from "node:fs/promises";
@@ -86,10 +87,10 @@ function uploadId(url: string) {
 	if (!id) throw new Error("Upload URL is missing its ID");
 	return id;
 }
-async function create(name = "包.txt", size = 5) {
+async function create(name = "包.txt", size = 5, directory = "") {
 	const response = await request("POST", "/uploads", {
 		"Upload-Length": String(size),
-		"Upload-Metadata": `filename ${Buffer.from(name).toString("base64")}`,
+		"Upload-Metadata": `filename ${Buffer.from(name).toString("base64")}${directory ? `,directory ${Buffer.from(directory).toString("base64")}` : ""}`,
 	});
 	expect(response.status).toBe(201);
 	return uploadLocation(response);
@@ -579,4 +580,99 @@ it("uses the same strict expiration boundary for completion and cleanup", async 
 
 afterAll(async () => {
 	await rm(initialState, { recursive: true, force: true });
+});
+
+it("uploads to a nested folder, resumes across restarts and recovers the destination receipt", async () => {
+	await mkdir(path.join(config.filesDir, "Docs/工作"), { recursive: true });
+	await writeFile(path.join(config.filesDir, "note.txt"), "root");
+	const url = await create("note.txt", 5, "Docs/工作");
+	expect((await patch(url, 0, "he")).status).toBe(204);
+	await service.dispose();
+	service = await createUploadService(config);
+	expect((await request("HEAD", url)).headers.get("Upload-Offset")).toBe("2");
+	expect((await patch(url, 2, "llo")).status).toBe(204);
+	expect(
+		await readFile(path.join(config.filesDir, "Docs/工作/note.txt"), "utf8"),
+	).toBe("hello");
+	expect(await readFile(path.join(config.filesDir, "note.txt"), "utf8")).toBe(
+		"root",
+	);
+	await service.dispose();
+	service = await createUploadService(config);
+	const head = await request("HEAD", url);
+	expect(head.status).toBe(200);
+	expect(head.headers.get("Upload-Metadata")).toContain(
+		`directory ${Buffer.from("Docs/工作").toString("base64")}`,
+	);
+	expect(copyFile).toHaveBeenCalledTimes(1);
+});
+it("rejects conflicting names in the destination folder", async () => {
+	await mkdir(path.join(config.filesDir, "Docs"));
+	await writeFile(path.join(config.filesDir, "Docs/note.txt"), "keep");
+	const response = await request("POST", "/uploads", {
+		"Upload-Length": "5",
+		"Upload-Metadata": `filename ${Buffer.from("note.txt").toString("base64")},directory ${Buffer.from("Docs").toString("base64")}`,
+	});
+	expect(response.status).toBe(409);
+	expect(
+		await readFile(path.join(config.filesDir, "Docs/note.txt"), "utf8"),
+	).toBe("keep");
+});
+it.each(["../escape", "/tmp", "a/../b", "a\\b", "a//b", "a\0b"])(
+	"rejects unsafe upload directory %j",
+	async (directory) => {
+		const response = await request("POST", "/uploads", {
+			"Upload-Length": "5",
+			"Upload-Metadata": `filename ${Buffer.from("note.txt").toString("base64")},directory ${Buffer.from(directory).toString("base64")}`,
+		});
+		expect(response.status).toBe(400);
+	},
+);
+it("rejects missing, file and symlink destinations", async () => {
+	await writeFile(path.join(config.filesDir, "file"), "keep");
+	await symlink(root, path.join(config.filesDir, "link"));
+	for (const directory of ["missing", "file", "link"]) {
+		const response = await request("POST", "/uploads", {
+			"Upload-Length": "5",
+			"Upload-Metadata": `filename ${Buffer.from("note.txt").toString("base64")},directory ${Buffer.from(directory).toString("base64")}`,
+		});
+		expect(response.status).toBe(422);
+	}
+});
+it.each(["removed", "linked"])(
+	"does not save elsewhere when a destination is %s mid-upload",
+	async (change) => {
+		await mkdir(path.join(config.filesDir, "Docs"));
+		const url = await create("note.txt", 5, "Docs");
+		await patch(url, 0, "he");
+		await rm(path.join(config.filesDir, "Docs"), { recursive: true });
+		if (change === "linked")
+			await symlink(root, path.join(config.filesDir, "Docs"));
+		expect((await patch(url, 2, "llo")).status).toBe(422);
+		await expect(
+			lstat(path.join(config.filesDir, "note.txt")),
+		).rejects.toMatchObject({ code: "ENOENT" });
+		await expect(lstat(path.join(root, "note.txt"))).rejects.toMatchObject({
+			code: "ENOENT",
+		});
+		expect(
+			await readFile(
+				path.join(config.stagingDir, "tus", uploadId(url)),
+				"utf8",
+			),
+		).toBe("hello");
+		if (change === "linked") await rm(path.join(config.filesDir, "Docs"));
+		await mkdir(path.join(config.filesDir, "Docs"));
+		expect((await request("HEAD", url)).status).toBe(200);
+		expect(
+			await readFile(path.join(config.filesDir, "Docs/note.txt"), "utf8"),
+		).toBe("hello");
+	},
+);
+it("completes empty files inside the selected folder", async () => {
+	await mkdir(path.join(config.filesDir, "Docs"));
+	await create("empty.txt", 0, "Docs");
+	expect((await lstat(path.join(config.filesDir, "Docs/empty.txt"))).size).toBe(
+		0,
+	);
 });

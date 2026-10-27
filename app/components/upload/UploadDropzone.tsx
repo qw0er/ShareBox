@@ -1,18 +1,21 @@
 import CloudUploadOutlined from "@mui/icons-material/CloudUploadOutlined";
 import { Alert, Box, Button, Stack, Typography } from "@mui/material";
-import { useRef, useState } from "react";
+import { type RefObject, useRef, useState } from "react";
 import { useTranslation } from "~/i18n";
 import { filesFromClipboard } from "./clipboard";
 
 export default function UploadDropzone({
 	busy,
 	onSelect,
+	inputRef,
 }: {
 	busy: boolean;
+	inputRef?: RefObject<HTMLInputElement | null>;
 	onSelect: (files: File[]) => void;
 }) {
 	const t = useTranslation();
-	const input = useRef<HTMLInputElement>(null);
+	const localInput = useRef<HTMLInputElement>(null);
+	const input = inputRef ?? localInput;
 	const [dragging, setDragging] = useState(false);
 	const [pasteError, setPasteError] = useState(false);
 	return (

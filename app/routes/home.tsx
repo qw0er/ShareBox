@@ -1,5 +1,5 @@
 import { Stack } from "@mui/material";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import FileBrowser from "~/components/files/FileBrowser";
 import WorkspaceLayout from "~/components/layout/WorkspaceLayout";
 import ShareDialog from "~/components/shares/ShareDialog";
@@ -11,6 +11,7 @@ import { getFileTree } from "~/server/files/repository.server";
 import { logger, withRequestLogging } from "~/server/logger.server";
 import { shareStore } from "~/server/shares/runtime.server";
 import { listShares } from "~/server/shares/service.server";
+import { resolveDirectory } from "~/utils/directory-tree";
 import type { Route } from "./+types/home";
 
 export function meta() {
@@ -55,16 +56,26 @@ export async function loader({ request }: Route.LoaderArgs) {
 	});
 }
 export default function Home({ loaderData }: Route.ComponentProps) {
+	const [requestedPath, setPath] = useState("");
+	const { path } = resolveDirectory(loaderData.fileTree, requestedPath);
+	const fileInput = useRef<HTMLInputElement>(null);
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	return (
 		<WorkspaceLayout>
 			<FileBrowser
 				fileTree={loaderData.fileTree}
+				path={path}
+				onNavigate={setPath}
 				shares={loaderData.shares}
 				onShare={setSelectedPath}
+				onUpload={() => fileInput.current?.click()}
 			/>
 			<Stack spacing={3}>
-				<UploadPanel maxUploadBytes={loaderData.maxUploadBytes} />
+				<UploadPanel
+					maxUploadBytes={loaderData.maxUploadBytes}
+					fileInputRef={fileInput}
+					directory={path}
+				/>
 				<SharesPanel shares={loaderData.shares} onManage={setSelectedPath} />
 			</Stack>
 			{selectedPath !== null && (

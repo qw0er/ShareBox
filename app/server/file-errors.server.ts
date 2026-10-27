@@ -4,6 +4,7 @@ function errorCode(error: unknown) {
 		: undefined;
 }
 const validationMessages: Record<string, string> = {
+	"Invalid destination": "Select a different folder outside the source folder.",
 	"Invalid file path": "Invalid file path. Refresh the list and try again.",
 	"Symbolic links are not supported":
 		"Symbolic links are not supported. Select a regular file or folder.",
@@ -25,6 +26,8 @@ export function fileOperationMessage(error: unknown, operation: string) {
 		return "The folder is not empty. Remove its contents first.";
 	if (code === "EEXIST")
 		return "A file or folder with this name already exists. Choose another name.";
+	if (code === "EXDEV")
+		return "Moving between filesystems is not supported. Copy the item instead.";
 	if (code === "EACCES" || code === "EPERM")
 		return `Unable to ${operation}. Contact the administrator to check storage permissions.`;
 	if (error instanceof Error && validationMessages[error.message])

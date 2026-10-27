@@ -24,6 +24,7 @@ const { CONFIG } = await import("../server/config.server");
 const { prepareFileAction } = await import("../server/file-actions.server");
 const { handleRemoveAction } = await import("../server/remove-action.server");
 const { handleRenameAction } = await import("../server/rename-action.server");
+const { handleMkdirAction } = await import("../server/mkdir-action.server");
 const originalFilesDir = CONFIG.filesDir;
 
 async function actionRequest(formData: FormData): Promise<Request> {
@@ -39,7 +40,10 @@ async function actionRequest(formData: FormData): Promise<Request> {
 	});
 }
 
-async function contextFor(request: Request, operation: "remove" | "rename") {
+async function contextFor(
+	request: Request,
+	operation: "remove" | "rename" | "mkdir",
+) {
 	const prepared = await prepareFileAction(request, operation);
 	if (!prepared.ok) {
 		throw new Error(`Unexpected preparation failure: ${prepared.result.error}`);
@@ -75,6 +79,100 @@ describe("file actions", () => {
 
 	afterAll(() => {
 		CONFIG.filesDir = originalFilesDir;
+	});
+
+	async function submitMkdir(parent: string, name: string) {
+		const form = new FormData();
+		form.set("path", parent);
+		form.set("name", name);
+		return handleMkdirAction(
+			await contextFor(await actionRequest(form), "mkdir"),
+		);
+	}
+	it("creates private folders at root and inside an existing folder", async () => {
+		expect(await submitMkdir("", "Documents")).toEqual({ success: true });
+		expect(await submitMkdir("Documents", "工作")).toEqual({ success: true });
+		const created = await stat(path.join(CONFIG.filesDir, "Documents", "工作"));
+		expect(created.isDirectory()).toBe(true);
+		expect(created.mode & 0o777).toBe(0o700);
+	});
+	it("rejects duplicate folders and existing files without changing contents", async () => {
+		await mkdir(path.join(CONFIG.filesDir, "existing"));
+		await writeFile(path.join(CONFIG.filesDir, "file.txt"), "keep");
+		for (const name of ["existing", "file.txt"]) {
+			expect(await submitMkdir("", name)).toEqual({
+				error:
+					"A file or folder with this name already exists. Choose another name.",
+			});
+		}
+		expect(await readFile(path.join(CONFIG.filesDir, "file.txt"), "utf8")).toBe(
+			"keep",
+		);
+	});
+	it.each(["", " ", ".", "..", "../escape", "a/b", "a\\b", "a\0b"])(
+		"rejects invalid folder name %j",
+		async (name) => {
+			expect(await submitMkdir("", name)).toEqual({
+				error: "Invalid filename. Enter a valid name.",
+			});
+		},
+	);
+	it.each(["../outside", "/tmp", "a/../b", "a\\b"])(
+		"rejects unsafe parent %j",
+		async (parent) => {
+			expect(await submitMkdir(parent, "new")).toEqual({
+				error: "Invalid file path. Refresh the list and try again.",
+			});
+		},
+	);
+	it("rejects missing parents, files as parents, and linked parents", async () => {
+		await writeFile(path.join(CONFIG.filesDir, "file.txt"), "keep");
+		await symlink(rootDir, path.join(CONFIG.filesDir, "link"));
+		for (const parent of ["missing", "file.txt", "link"]) {
+			expect((await submitMkdir(parent, "new")).error).toBeDefined();
+		}
+		await expect(stat(path.join(rootDir, "new"))).rejects.toMatchObject({
+			code: "ENOENT",
+		});
+	});
+	it("does not follow a symlink at the new folder path", async () => {
+		await symlink(rootDir, path.join(CONFIG.filesDir, "link"));
+		expect((await submitMkdir("", "link")).error).toContain("already exists");
+	});
+	it("rejects malformed folder forms", async () => {
+		const missingPath = new FormData();
+		missingPath.set("name", "new");
+		const missingName = new FormData();
+		missingName.set("path", "");
+		for (const form of [missingPath, missingName]) {
+			expect(
+				(
+					await handleMkdirAction(
+						await contextFor(await actionRequest(form), "mkdir"),
+					)
+				).error,
+			).toBeDefined();
+		}
+		const form = new FormData();
+		form.set("path", "");
+		form.set("name", "new");
+		form.set("file", new File(["text"], "test.txt"));
+		expect(
+			await handleMkdirAction(
+				await contextFor(await actionRequest(form), "mkdir"),
+			),
+		).toEqual({ error: "Invalid form. Refresh the page and try again." });
+	});
+	it("enforces POST and same-origin for folder creation", async () => {
+		for (const request of [
+			new Request("http://localhost/files/mkdir"),
+			new Request("http://localhost/files/mkdir", {
+				method: "POST",
+				headers: { Origin: "https://evil.example" },
+			}),
+		]) {
+			expect((await prepareFileAction(request, "mkdir")).ok).toBe(false);
+		}
 	});
 
 	it("removes a file", async () => {

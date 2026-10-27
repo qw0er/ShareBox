@@ -54,6 +54,9 @@ vi.mock("../server/rename-action.server", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../server/rename-action.server")>()),
 	handleRenameAction: vi.fn(async () => ({ success: true })),
 }));
+vi.mock("../server/mkdir-action.server", () => ({
+	handleMkdirAction: vi.fn(async () => ({ success: true })),
+}));
 vi.mock("../server/tus.server", () => ({
 	handleTusRequest: vi.fn(async () => new Response(null, { status: 204 })),
 }));
@@ -61,6 +64,7 @@ let home: typeof import("../routes/home");
 let uploads: typeof import("../routes/uploads");
 let download: typeof import("../routes/download");
 let filesRemove: typeof import("../routes/files-remove");
+let filesMkdir: typeof import("../routes/files-mkdir");
 let filesRename: typeof import("../routes/files-rename");
 let auth: ReturnType<typeof import("../server/auth.server").getAuth>;
 beforeAll(async () => {
@@ -70,6 +74,7 @@ beforeAll(async () => {
 	download = await import("../routes/download");
 	filesRemove = await import("../routes/files-remove");
 	filesRename = await import("../routes/files-rename");
+	filesMkdir = await import("../routes/files-mkdir");
 	auth = (await import("../server/auth.server")).getAuth();
 });
 afterAll(() => vi.unstubAllEnvs());
@@ -117,6 +122,13 @@ it("guards home, download and file action routes before reading or mutating file
 			),
 		),
 	).rejects.toMatchObject({ status: 401 });
+	await expect(
+		filesMkdir.action({
+			request: new Request("http://localhost/files/mkdir", { method: "POST" }),
+		} as Parameters<typeof filesMkdir.action>[0]),
+	).rejects.toMatchObject({ status: 401 });
+	const { handleMkdirAction } = await import("../server/mkdir-action.server");
+	expect(handleMkdirAction).not.toHaveBeenCalled();
 	expect(getFileTree).not.toHaveBeenCalled();
 	expect(downloadRequestedFile).not.toHaveBeenCalled();
 	expect(handleRemoveAction).not.toHaveBeenCalled();
@@ -194,6 +206,36 @@ it("passes authenticated management and tus requests to their existing handlers"
 			),
 		),
 	).toEqual({ success: true });
+
+	const mkdirArgs = (request: Request) =>
+		({ request }) as Parameters<typeof filesMkdir.action>[0];
+	const { handleMkdirAction } = await import("../server/mkdir-action.server");
+	expect(
+		await filesMkdir.action(
+			mkdirArgs(
+				new Request("http://localhost/files/mkdir", {
+					method: "POST",
+					headers: { Cookie: cookie, Origin: "https://evil.example" },
+					body: new URLSearchParams({ path: "", name: "Documents" }),
+				}),
+			),
+		),
+	).toEqual({
+		error: "Invalid request origin. Please try again from this site.",
+	});
+	expect(handleMkdirAction).not.toHaveBeenCalled();
+	expect(
+		await filesMkdir.action(
+			mkdirArgs(
+				new Request("http://localhost/files/mkdir", {
+					method: "POST",
+					headers: actionHeaders,
+					body: new URLSearchParams({ path: "", name: "Documents" }),
+				}),
+			),
+		),
+	).toEqual({ success: true });
+	expect(handleMkdirAction).toHaveBeenCalledOnce();
 	const { handleRemoveAction } = await import("../server/remove-action.server");
 	const { handleRenameAction } = await import("../server/rename-action.server");
 	expect(handleRemoveAction).toHaveBeenCalledOnce();
