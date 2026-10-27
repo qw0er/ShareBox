@@ -1,5 +1,6 @@
 export type ShareSummary = {
 	id: string;
+	kind?: "file" | "directory";
 	targetPath: string;
 	status: "valid" | "invalid";
 };

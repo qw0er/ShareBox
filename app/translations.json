@@ -172,7 +172,10 @@
 		"已移动。": "Moved.",
 		"已复制。": "Copied.",
 		"没有可选择的子文件夹。": "No subfolders to select.",
-		"可选择当前文件夹，或返回上级目录。": "Choose this folder or return to a parent folder."
+		"可选择当前文件夹，或返回上级目录。": "Choose this folder or return to a parent folder.",
+		"发布分享？": "Publish share?",
+		"分享后，任何拥有链接的人都可以访问此内容。目录分享包含所有当前和后续新增的子项。取消发布可阻止后续访问。": "Anyone with the link can access this content. Directory shares include all current and future descendants. Revoking prevents future access.",
+		"此目录已公开，上传或添加的内容将对拥有分享链接的人可见。": "This directory is published. Uploaded or added content will be visible to anyone with its share link."
 	},
 	"server": {
 		"Only regular files can be shared": "只能分享普通文件",

@@ -116,7 +116,6 @@ it("rejects directories, symlinks and unsafe paths, including symbolic parents",
 	await fs.symlink(path.join(files, "test.txt"), path.join(files, "link"));
 	await fs.symlink(files, path.join(files, "parent"));
 	for (const target of [
-		"dir",
 		"link",
 		"parent/test.txt",
 		"../secret",
@@ -280,14 +279,14 @@ it("lists valid, missing and replaced shares without exposing filesystem identit
 	const { listShares } = await import("../server/shares/service.server");
 	const id = await publishFile(store, files, "test.txt");
 	expect(await listShares(store, files)).toEqual([
-		{ id, targetPath: "test.txt", status: "valid" },
+		{ id, kind: "file", targetPath: "test.txt", status: "valid" },
 	]);
 	await fs.rename(
 		path.join(files, "test.txt"),
 		path.join(files, "original.txt"),
 	);
 	expect(await listShares(store, files)).toEqual([
-		{ id, targetPath: "test.txt", status: "invalid" },
+		{ id, kind: "file", targetPath: "test.txt", status: "invalid" },
 	]);
 	await fs.writeFile(path.join(files, "test.txt"), "replacement");
 	expect((await listShares(store, files))[0].status).toBe("invalid");
@@ -319,4 +318,60 @@ it("rolls back all share path changes when updating a directory fails", () => {
 	expect(store.find(a)?.targetPath).toBe("old/a");
 	expect(store.find(b)?.targetPath).toBe("old/b");
 	expect(store.find(stale)?.targetPath).toBe("new/a");
+});
+
+it("publishes a live directory tree with scoped browsing, downloads and revocation", async () => {
+	await fs.mkdir(path.join(files, "published/sub"), { recursive: true });
+	await fs.writeFile(path.join(files, "published/sub/a & b.txt"), "content");
+	await fs.symlink(files, path.join(files, "published/escape"));
+	const id = await publishFile(store, files, "published");
+	expect(await publishFile(store, files, "published")).toBe(id);
+	const browse = (
+		relative: string,
+		method = "GET",
+		headers: HeadersInit = {},
+	) =>
+		downloadShare(
+			store,
+			files,
+			id,
+			new Request(
+				`http://localhost/s/${id}?${new URLSearchParams({ path: relative })}`,
+				{ method, headers },
+			),
+		);
+	const listing = await browse("");
+	expect(listing.headers.get("Content-Type")).toContain("text/html");
+	expect(await listing.text()).toContain("sub/");
+	expect(await (await browse("sub")).text()).toContain("a &amp; b.txt");
+	const range = await browse("sub/a & b.txt", "GET", { Range: "bytes=1-3" });
+	expect(range.status).toBe(206);
+	expect(await range.text()).toBe("ont");
+	expect(await (await browse("sub/a & b.txt", "HEAD")).text()).toBe("");
+	await fs.writeFile(path.join(files, "published/new.txt"), "new");
+	expect(await (await browse("new.txt")).text()).toBe("new");
+	for (const value of [
+		"../test.txt",
+		"/test.txt",
+		"sub/../../test.txt",
+		"escape/test.txt",
+		"sub\\a",
+		"%2e%2e/test.txt",
+	])
+		expect((await browse(value)).status).toBe(404);
+	store.renamePaths("published", "renamed");
+	await fs.rename(path.join(files, "published"), path.join(files, "renamed"));
+	expect(await (await browse("new.txt")).text()).toBe("new");
+	store.revoke(id);
+	expect((await browse("")).status).toBe(404);
+	expect((await browse("new.txt", "HEAD")).status).toBe(404);
+});
+
+it("does not expose a replacement directory through an old share", async () => {
+	await fs.mkdir(path.join(files, "dir"));
+	const id = await publishFile(store, files, "dir");
+	await fs.rename(path.join(files, "dir"), path.join(files, "old"));
+	await fs.mkdir(path.join(files, "dir"));
+	expect((await download(id)).status).toBe(404);
+	expect(await publishFile(store, files, "dir")).not.toBe(id);
 });

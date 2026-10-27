@@ -7,6 +7,7 @@ import {
 	SYMLINK_MESSAGE,
 } from "../files/paths.server";
 import { logger } from "../logger.server";
+import { browseDirectoryShare } from "./directory.server";
 import type { ShareStore } from "./store.server";
 
 export const SHARE_HEADERS = {
@@ -32,12 +33,18 @@ export async function publishFile(
 	try {
 		const { targetPath } = await resolveEntry(filesDir, relativePath);
 		const stats = await fs.lstat(targetPath, { bigint: true });
-		if (!stats.isFile() || stats.isSymbolicLink())
-			throw new Response("Only regular files can be shared", { status: 400 });
-		return store.publish(relativePath, {
-			targetDev: stats.dev.toString(),
-			targetIno: stats.ino.toString(),
-		});
+		if ((!stats.isFile() && !stats.isDirectory()) || stats.isSymbolicLink())
+			throw new Response("Only regular files and directories can be shared", {
+				status: 400,
+			});
+		return store.publish(
+			relativePath,
+			{
+				targetDev: stats.dev.toString(),
+				targetIno: stats.ino.toString(),
+			},
+			stats.isDirectory() ? "directory" : "file",
+		);
 	} catch (error) {
 		if (missingTarget(error))
 			throw new Response("Invalid file path or file does not exist", {
@@ -55,6 +62,12 @@ export async function downloadShare(
 ): Promise<Response> {
 	try {
 		const share = isShareId(id) ? store.find(id) : undefined;
+		if (share?.kind === "directory") {
+			const response = await browseDirectoryShare(filesDir, share, request);
+			for (const [key, value] of Object.entries(SHARE_HEADERS))
+				response.headers.set(key, value);
+			return response;
+		}
 		if (share?.kind !== "file")
 			throw new Response("File not found", { status: 404 });
 		// Identity is checked on the open descriptor, not just on a prior lstat.
@@ -95,8 +108,7 @@ export async function listShares(
 				const { targetPath } = await resolveEntry(filesDir, share.targetPath);
 				const stats = await fs.lstat(targetPath, { bigint: true });
 				valid =
-					share.kind === "file" &&
-					stats.isFile() &&
+					(share.kind === "file" ? stats.isFile() : stats.isDirectory()) &&
 					!stats.isSymbolicLink() &&
 					stats.dev.toString() === share.targetDev &&
 					stats.ino.toString() === share.targetIno;
@@ -105,6 +117,7 @@ export async function listShares(
 			}
 			return {
 				id: share.id,
+				kind: share.kind,
 				targetPath: share.targetPath,
 				status: valid ? "valid" : "invalid",
 			};

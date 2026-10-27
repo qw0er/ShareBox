@@ -1,10 +1,11 @@
-import { Stack } from "@mui/material";
+import { Alert, Stack } from "@mui/material";
 import { useRef, useState } from "react";
 import FileBrowser from "~/components/files/FileBrowser";
 import WorkspaceLayout from "~/components/layout/WorkspaceLayout";
 import ShareDialog from "~/components/shares/ShareDialog";
 import SharesPanel from "~/components/shares/SharesPanel";
 import UploadPanel from "~/components/upload/UploadPanel";
+import { useTranslation } from "~/i18n";
 import { getAuth } from "~/server/auth.server";
 import { CONFIG } from "~/server/config.server";
 import { getFileTree } from "~/server/files/repository.server";
@@ -56,6 +57,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 	});
 }
 export default function Home({ loaderData }: Route.ComponentProps) {
+	const t = useTranslation();
 	const [requestedPath, setPath] = useState("");
 	const { path } = resolveDirectory(loaderData.fileTree, requestedPath);
 	const fileInput = useRef<HTMLInputElement>(null);
@@ -71,6 +73,17 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 				onUpload={() => fileInput.current?.click()}
 			/>
 			<Stack spacing={3}>
+				{loaderData.shares.some(
+					(share) =>
+						share.kind === "directory" &&
+						share.status === "valid" &&
+						(path === share.targetPath ||
+							path.startsWith(`${share.targetPath}/`)),
+				) && (
+					<Alert severity="warning">
+						{t("此目录已公开，上传或添加的内容将对拥有分享链接的人可见。")}
+					</Alert>
+				)}
 				<UploadPanel
 					maxUploadBytes={loaderData.maxUploadBytes}
 					fileInputRef={fileInput}

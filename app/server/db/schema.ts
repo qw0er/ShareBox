@@ -11,7 +11,7 @@ export const shares = sqliteTable(
 	"shares",
 	{
 		id: text("id").primaryKey(),
-		kind: text("kind", { enum: ["file"] })
+		kind: text("kind", { enum: ["file", "directory"] })
 			.notNull()
 			.default("file"),
 		targetPath: text("target_path").notNull(),

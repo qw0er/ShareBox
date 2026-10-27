@@ -46,7 +46,7 @@ export default function ShareDialog({
 			aria-labelledby={titleId}
 		>
 			<DialogTitle id={titleId}>
-				{valid ? t("管理分享") : share ? t("重新分享文件") : t("分享文件？")}
+				{valid ? t("管理分享") : share ? t("重新分享") : t("发布分享？")}
 			</DialogTitle>
 			<DialogContent>
 				<DialogContentText sx={{ overflowWrap: "anywhere", mb: 2 }}>
@@ -79,7 +79,7 @@ export default function ShareDialog({
 						)}
 						<DialogContentText>
 							{t(
-								"分享后，任何拥有链接的人都可以下载此文件。取消发布可阻止后续下载。",
+								"分享后，任何拥有链接的人都可以访问此内容。目录分享包含所有当前和后续新增的子项。取消发布可阻止后续访问。",
 							)}
 						</DialogContentText>
 					</>

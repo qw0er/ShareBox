@@ -99,7 +99,7 @@ export default function FileActionsMenu({
 						<ListItemText>{t("下载")}</ListItemText>
 					</MenuItem>
 				)}
-				{node.type === "file" && (
+				{
 					<MenuItem
 						onClick={() => {
 							close();
@@ -111,7 +111,7 @@ export default function FileActionsMenu({
 						</ListItemIcon>
 						<ListItemText>{t(shared ? "管理分享" : "分享")}</ListItemText>
 					</MenuItem>
-				)}
+				}
 				{node.type === "file" && isTextFile(node.name) && (
 					<MenuItem
 						disabled={tooLarge || busy}

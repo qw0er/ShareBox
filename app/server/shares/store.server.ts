@@ -65,7 +65,11 @@ export function createShareStore(database: StateDatabase) {
 		find(id: string) {
 			return db.select().from(shares).where(eq(shares.id, id)).get();
 		},
-		publish(targetPath: string, identity: FileIdentity) {
+		publish(
+			targetPath: string,
+			identity: FileIdentity,
+			kind: "file" | "directory" = "file",
+		) {
 			return db.transaction(
 				(tx) => {
 					const existing = tx
@@ -77,7 +81,7 @@ export function createShareStore(database: StateDatabase) {
 						existing &&
 						existing.targetDev === identity.targetDev &&
 						existing.targetIno === identity.targetIno &&
-						existing.kind === "file"
+						existing.kind === kind
 					)
 						return existing.id;
 					if (existing)
@@ -86,7 +90,7 @@ export function createShareStore(database: StateDatabase) {
 					tx.insert(shares)
 						.values({
 							id,
-							kind: "file",
+							kind,
 							targetPath,
 							...identity,
 							createdAt: new Date().toISOString(),
@@ -94,7 +98,7 @@ export function createShareStore(database: StateDatabase) {
 						.run();
 					logger.info(
 						{ component: "shares", targetPath, replaced: !!existing },
-						"File share created",
+						"Share created",
 					);
 					return id;
 				},

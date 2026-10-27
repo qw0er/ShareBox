@@ -16,6 +16,7 @@ import { useFetcher } from "react-router";
 import { useTranslation } from "~/i18n";
 import type { action } from "~/routes/files-move";
 import type { FileNode } from "~/types/files";
+import type { ShareSummary } from "~/types/shares";
 import { resolveDirectory } from "~/utils/directory-tree";
 import DirectoryBrowser from "./DirectoryBrowser";
 import { fileEntryButtonSx } from "./FileEntryRow";
@@ -25,12 +26,14 @@ export type TransferTarget = { node: FileNode; operation: "move" | "copy" };
 export default function TransferDialog({
 	target: { node, operation },
 	fileTree,
+	shares,
 	onClose,
 	onSuccess,
 	onWarning,
 }: {
 	target: TransferTarget;
 	fileTree: FileNode[];
+	shares: ShareSummary[];
 	onClose: () => void;
 	onSuccess: () => void;
 	onWarning: (message: string) => void;
@@ -113,6 +116,17 @@ export default function TransferDialog({
 								: "移动后已有分享链接保持有效。",
 						)}
 					</Typography>
+					{shares.some(
+						(share) =>
+							share.kind === "directory" &&
+							share.status === "valid" &&
+							(path === share.targetPath ||
+								path.startsWith(`${share.targetPath}/`)),
+					) && (
+						<Alert severity="warning" sx={{ mt: 2 }}>
+							{t("此目录已公开，上传或添加的内容将对拥有分享链接的人可见。")}
+						</Alert>
+					)}
 					{path === parent && (
 						<Alert severity="info" sx={{ mt: 2 }}>
 							{t("请选择其他文件夹。")}

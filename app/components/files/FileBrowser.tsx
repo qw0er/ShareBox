@@ -175,6 +175,7 @@ export default function FileBrowser({
 				<TransferDialog
 					key={`${transferTarget.operation}-${transferTarget.node.path}`}
 					target={transferTarget}
+					shares={shares}
 					fileTree={fileTree}
 					onClose={() => setTransferTarget(null)}
 					onWarning={setWarning}
