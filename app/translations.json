@@ -137,7 +137,10 @@
 		"重命名文件": "Rename file",
 		"为 {name} 输入新名称。": "Enter a new name for {name}.",
 		"上传进度": "upload progress",
-		"上传说明 {size}": "Maximum {size} per file, with up to 2 uploads at once. Pausing preserves progress; deleting an upload removes temporary data. Select the original file after refreshing to resume. Uploads are retained for 7 days."
+		"上传说明 {size}": "Maximum {size} per file, with up to 2 uploads at once. Pausing preserves progress; deleting an upload removes temporary data. Select the original file after refreshing to resume. Uploads are retained for 7 days.",
+		"文件上传区域": "File upload area",
+		"选择文件，或在此区域粘贴复制的文件。": "Choose files, or focus this area and paste copied files.",
+		"剪贴板没有可上传的文件。文件路径无法直接上传，请选择或拖放文件。": "No uploadable files were found on the clipboard. A file path alone cannot be uploaded; choose or drag the file instead."
 	},
 	"server": {
 		"Only regular files can be shared": "只能分享普通文件",
