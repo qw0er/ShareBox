@@ -19,6 +19,8 @@ import type { FileNode } from "~/types/files";
 import type { ShareSummary } from "~/types/shares";
 import { privateDownloadUrl } from "~/utils/download-links";
 import { formatSize } from "~/utils/file-format";
+import CopyTextButton from "./CopyTextButton";
+import { isTextFile } from "./copy-text";
 import DeleteFileDialog from "./DeleteFileDialog";
 import DirectoryBrowser from "./DirectoryBrowser";
 import { FileEntryContent, fileEntryButtonSx } from "./FileEntryRow";
@@ -109,6 +111,9 @@ function ManagedEntry({
 							<DownloadOutlined fontSize="small" />
 						</IconButton>
 					</Tooltip>
+				)}
+				{node.type === "file" && isTextFile(node.name) && (
+					<CopyTextButton name={node.name} path={node.path} size={node.size} />
 				)}
 				{!directory && (
 					<Tooltip title={shared ? t("管理分享") : t("分享")}>

@@ -2,6 +2,7 @@ import CloudUploadOutlined from "@mui/icons-material/CloudUploadOutlined";
 import { Alert, Box, Button, Stack, Typography } from "@mui/material";
 import { useRef, useState } from "react";
 import { useTranslation } from "~/i18n";
+import { filesFromClipboard } from "./clipboard";
 
 export default function UploadDropzone({
 	busy,
@@ -23,7 +24,7 @@ export default function UploadDropzone({
 				onPaste={(event) => {
 					event.preventDefault();
 					if (busy) return;
-					const files = Array.from(event.clipboardData.files);
+					const files = filesFromClipboard(event.clipboardData);
 					if (!files.length) {
 						setPasteError(true);
 						return;
@@ -68,13 +69,11 @@ export default function UploadDropzone({
 					color="text.secondary"
 					sx={{ my: 1, display: "block" }}
 				>
-					{t("选择文件，或在此区域粘贴复制的文件。")}
+					{t("选择文件，或在此区域粘贴文件或文本。")}
 				</Typography>
 				{pasteError && (
 					<Alert severity="info" sx={{ mb: 2, textAlign: "left" }}>
-						{t(
-							"剪贴板没有可上传的文件。文件路径无法直接上传，请选择或拖放文件。",
-						)}
+						{t("剪贴板中没有文件或文本。")}
 					</Alert>
 				)}
 				<Button

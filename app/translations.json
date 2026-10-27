@@ -140,7 +140,13 @@
 		"上传说明 {size}": "Maximum {size} per file, with up to 2 uploads at once. Pausing preserves progress; deleting an upload removes temporary data. Select the original file after refreshing to resume. Uploads are retained for 7 days.",
 		"文件上传区域": "File upload area",
 		"选择文件，或在此区域粘贴复制的文件。": "Choose files, or focus this area and paste copied files.",
-		"剪贴板没有可上传的文件。文件路径无法直接上传，请选择或拖放文件。": "No uploadable files were found on the clipboard. A file path alone cannot be uploaded; choose or drag the file instead."
+		"剪贴板没有可上传的文件。文件路径无法直接上传，请选择或拖放文件。": "No uploadable files were found on the clipboard. A file path alone cannot be uploaded; choose or drag the file instead.",
+		"选择文件，或在此区域粘贴文件或文本。": "Choose files, or focus this area and paste files or text.",
+		"剪贴板中没有文件或文本。": "The clipboard contains no files or text.",
+		"仅支持复制不超过 1 MiB 的文本文件。": "Only text files up to 1 MiB can be copied.",
+		"复制文件内容": "Copy file contents",
+		"文件内容已复制。": "File contents copied.",
+		"无法复制文件内容。请检查文件、登录状态和剪贴板权限。": "Could not copy the file. Check the file, your login, and clipboard permissions."
 	},
 	"server": {
 		"Only regular files can be shared": "只能分享普通文件",
