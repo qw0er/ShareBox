@@ -71,7 +71,7 @@ function errorToResponse(error: unknown): Response {
 	if (error instanceof Response) return error;
 	const message = error instanceof Error ? error.message : "";
 	if (message === INVALID_PATH_MESSAGE)
-		return new Response("路径无效", { status: 400 });
+		return new Response("Invalid path", { status: 400 });
 	const code = errorCode(error);
 	if (
 		code === "ENOENT" ||
@@ -81,9 +81,12 @@ function errorToResponse(error: unknown): Response {
 		message === SYMLINK_MESSAGE ||
 		message === "Unsupported file type"
 	) {
-		return new Response("文件不存在", { status: 404 });
+		return new Response("File not found", { status: 404 });
 	}
-	return new Response("暂时无法读取文件，请稍后重试", { status: 500 });
+	return new Response(
+		"Unable to read the file right now. Please try again later",
+		{ status: 500 },
+	);
 }
 
 async function fileOperation<T>(
@@ -135,7 +138,8 @@ export async function deliverFile(
 	expectedIdentity?: { targetDev: string; targetIno: string },
 ): Promise<Response> {
 	const { targetPath, targetStats } = await resolveEntry(rootDir, relativePath);
-	if (!targetStats.isFile()) throw new Response("文件不存在", { status: 404 });
+	if (!targetStats.isFile())
+		throw new Response("File not found", { status: 404 });
 
 	// Do not follow a final-component link replaced between validation and open.
 	const file = await fs.open(
@@ -149,11 +153,12 @@ export async function deliverFile(
 				identity.dev.toString() !== expectedIdentity.targetDev ||
 				identity.ino.toString() !== expectedIdentity.targetIno
 			) {
-				throw new Response("文件不存在", { status: 404 });
+				throw new Response("File not found", { status: 404 });
 			}
 		}
 		const current = await file.stat();
-		if (!current.isFile()) throw new Response("文件不存在", { status: 404 });
+		if (!current.isFile())
+			throw new Response("File not found", { status: 404 });
 		const lastModified = current.mtime.toUTCString();
 		const ifRange = request.headers.get("If-Range");
 		const range = parseRange(
@@ -232,7 +237,8 @@ export async function downloadRequestedFile(
 ): Promise<Response> {
 	const relativePath = new URL(request.url).searchParams.get("path") || "";
 	return fileOperation("download", relativePath, async () => {
-		if (!relativePath) throw new Response("请选择文件", { status: 400 });
+		if (!relativePath)
+			throw new Response("Please select a file", { status: 400 });
 		return deliverFile(rootDir, relativePath, request);
 	});
 }

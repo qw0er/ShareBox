@@ -34,7 +34,7 @@ function validateFileName(name: unknown): asserts name is string {
 	) {
 		throw {
 			status_code: 400,
-			body: "文件名无效，请避免使用斜杠、反斜杠或空名称。",
+			body: "Invalid filename. Names cannot be empty or contain slashes.",
 		};
 	}
 }
@@ -57,31 +57,34 @@ function uploadError(error: unknown) {
 					: 500,
 		body:
 			err.code === "EEXIST" || err.status_code === 409
-				? "上传发生冲突，请检查同名文件或稍后重试。"
+				? "Upload conflict. Check for a file with the same name or try again later."
 				: err.code === "ENOSPC"
-					? "服务器存储空间不足，请联系管理员清理空间后重试。"
+					? "The server is out of storage space. Contact the administrator."
 					: err.code === "EACCES" || err.code === "EPERM"
-						? "服务器无法写入文件，请联系管理员检查存储目录权限。"
+						? "The server cannot write the file. Contact the administrator to check storage permissions."
 						: typeof err.status_code === "number" && err.status_code < 500
 							? uploadStatusMessage(err.status_code)
-							: "服务器暂时无法完成上传，请稍后重试；若仍失败，请联系管理员查看日志。",
+							: "The server could not complete the upload. Try again later or contact the administrator.",
 	};
 }
 
 function uploadStatusMessage(status: number) {
 	const messages: Record<number, string> = {
-		400: "上传信息无效，请检查文件名并重新选择文件。",
-		403: "上传请求被拒绝，请从本站页面重新操作。",
-		404: "上传任务不存在，请重新选择文件后上传。",
-		405: "不支持此上传请求方式，请刷新页面后重试。",
-		410: "上传任务已过期，请移除任务后重新选择文件。",
-		412: "上传协议不匹配，请刷新页面后重试。",
-		413: "文件超过服务器大小限制，请选择较小的文件。",
-		415: "上传数据格式无效，请刷新页面后重试。",
-		423: "上传任务正在被处理，请稍后重试。",
-		429: "上传请求过于频繁，请稍后重试。",
+		400: "Invalid upload information. Check the filename and select the file again.",
+		403: "Upload request rejected. Please try again from this site.",
+		404: "Upload not found. Select the file and try again.",
+		405: "Unsupported upload method. Refresh the page and try again.",
+		410: "Upload expired. Remove it and select the file again.",
+		412: "Upload protocol mismatch. Refresh the page and try again.",
+		413: "File exceeds the server size limit. Choose a smaller file.",
+		415: "Invalid upload data. Refresh the page and try again.",
+		423: "Upload is being processed. Please try again later.",
+		429: "Too many upload requests. Please try again later.",
 	};
-	return messages[status] ?? "上传请求无效，请刷新页面后重试。";
+	return (
+		messages[status] ??
+		"Invalid upload request. Refresh the page and try again."
+	);
 }
 
 // Rules and conversions: no filesystem access, logging, or implicit clock reads.
@@ -99,7 +102,10 @@ function parseUploadMetadata(upload: Pick<Upload, "metadata" | "size">) {
 	const filename = upload.metadata?.filename || "";
 	validateFileName(filename);
 	if (upload.size === undefined)
-		throw { status_code: 400, body: "缺少文件大小，请重新选择文件后上传。" };
+		throw {
+			status_code: 400,
+			body: "Missing file size. Select the file and try again.",
+		};
 	return { filename, size: upload.size };
 }
 
@@ -144,7 +150,10 @@ function validateUploadRequest(input: {
 		(!origin && !["HEAD", "GET", "OPTIONS"].includes(method))
 	) {
 		return {
-			error: { status_code: 403, body: "请求来源无效，请从本站页面重新上传。" },
+			error: {
+				status_code: 403,
+				body: "Invalid request origin. Please upload from this site.",
+			},
 		};
 	}
 	const match = /^\/uploads(?:\/([a-f0-9]{32}))?\/?$/.exec(url.pathname);
@@ -152,14 +161,14 @@ function validateUploadRequest(input: {
 		return {
 			error: {
 				status_code: 404,
-				body: "上传任务不存在，请重新选择文件后上传。",
+				body: "Upload not found. Select the file and try again.",
 			},
 		};
 	if (method === "GET" || (method === "POST" && match[1]))
 		return {
 			error: {
 				status_code: 405,
-				body: "不支持此上传请求方式，请刷新页面后重试。",
+				body: "Unsupported upload method. Refresh the page and try again.",
 			},
 		};
 	return { id: match[1] };
@@ -203,7 +212,10 @@ async function statIfExists(filename: string) {
 async function validateUpload(upload: Upload, filesRoot: string) {
 	const { filename, size } = parseUploadMetadata(upload);
 	if (await statIfExists(path.join(filesRoot, filename)))
-		throw { status_code: 409, body: "同名文件或目录已存在。" };
+		throw {
+			status_code: 409,
+			body: "A file or folder with this name already exists.",
+		};
 	uploadLogger.info(
 		{ uploadId: upload.id, filename, size },
 		"Upload creation accepted",
@@ -221,7 +233,7 @@ async function readReceipt(
 		const stat = await statIfExists(receiptPath);
 		if (!stat) return undefined;
 		if (isExpired(stat.mtimeMs, Date.now()))
-			throw { status_code: 410, body: "上传任务已过期。" };
+			throw { status_code: 410, body: "Upload expired." };
 		const receipt = parseReceipt(
 			JSON.parse(await readFile(receiptPath, "utf8")),
 		);
@@ -361,7 +373,10 @@ export class UploadService {
 				upload.creation_date &&
 				isExpired(Date.parse(upload.creation_date), Date.now())
 			)
-				throw { status_code: 410, body: "上传任务已过期，请删除后重新上传。" };
+				throw {
+					status_code: 410,
+					body: "Upload expired. Delete it and upload again.",
+				};
 			if (upload.size === undefined || upload.offset !== upload.size) {
 				uploadLogger.debug(
 					{ uploadId: id, offset: upload.offset, size: upload.size },

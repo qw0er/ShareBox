@@ -96,7 +96,7 @@ describe("file actions", () => {
 		form.set("file", new File(["content"], "remove.txt"));
 
 		await expect(submitRemove(form)).resolves.toEqual({
-			error: "操作表单无效，请刷新页面后重试。",
+			error: "Invalid form. Refresh the page and try again.",
 		});
 	});
 
@@ -105,7 +105,7 @@ describe("file actions", () => {
 		form.set("path", "missing.txt");
 
 		await expect(submitRemove(form)).resolves.toEqual({
-			error: "文件或文件夹已不存在，请刷新列表。",
+			error: "The file or folder no longer exists. Refresh the list.",
 		});
 	});
 
@@ -119,7 +119,7 @@ describe("file actions", () => {
 		form.set("path", "not-empty");
 
 		await expect(submitRemove(form)).resolves.toEqual({
-			error: "文件夹不为空，请先删除其中的内容。",
+			error: "The folder is not empty. Remove its contents first.",
 		});
 	});
 
@@ -130,7 +130,7 @@ describe("file actions", () => {
 			form.set("path", pathValue);
 
 			await expect(submitRemove(form)).resolves.toEqual({
-				error: "文件路径无效，请刷新列表后重试。",
+				error: "Invalid file path. Refresh the list and try again.",
 			});
 		},
 	);
@@ -155,7 +155,8 @@ describe("file actions", () => {
 		form.set("path", "old.txt");
 		form.set("newName", "existing.txt");
 		expect(await submitRename(form)).toEqual({
-			error: "同名文件或文件夹已存在，请换一个名称。",
+			error:
+				"A file or folder with this name already exists. Choose another name.",
 		});
 		expect(await readFile(path.join(CONFIG.filesDir, "old.txt"), "utf8")).toBe(
 			"old",
@@ -172,7 +173,7 @@ describe("file actions", () => {
 			form.set("path", "old.txt");
 			form.set("newName", newName);
 			expect(await submitRename(form)).toEqual({
-				error: "文件名无效，请输入有效的新名称。",
+				error: "Invalid filename. Enter a valid name.",
 			});
 			expect(
 				await readFile(path.join(CONFIG.filesDir, "old.txt"), "utf8"),
@@ -203,7 +204,9 @@ describe("file actions", () => {
 		});
 		expect(await prepareFileAction(request, "remove")).toEqual({
 			ok: false,
-			result: { error: "无法读取操作表单，请刷新页面后重试。" },
+			result: {
+				error: "Unable to read the form. Refresh the page and try again.",
+			},
 		});
 	});
 	it("prepares the parsed form and operation logger", async () => {
@@ -225,7 +228,10 @@ describe("file actions", () => {
 			const request = new Request("http://localhost/", { method });
 			expect(await prepareFileAction(request, "remove")).toEqual({
 				ok: false,
-				result: { error: "此操作仅支持提交表单，请刷新页面后重试。" },
+				result: {
+					error:
+						"This operation requires a form submission. Refresh the page and try again.",
+				},
 			});
 		},
 	);
@@ -238,7 +244,9 @@ describe("file actions", () => {
 
 		await expect(prepareFileAction(request, "remove")).resolves.toEqual({
 			ok: false,
-			result: { error: "请求来源无效，请从本站页面重新操作。" },
+			result: {
+				error: "Invalid request origin. Please try again from this site.",
+			},
 		});
 	});
 });

@@ -4,7 +4,7 @@ import type { Route } from "./+types/logout";
 
 export function loader({ request }: Route.LoaderArgs) {
 	return withRequestLogging(request, "logout", async () => {
-		throw new Response("请使用退出登录按钮提交此操作。", {
+		throw new Response("Use the sign out button to submit this operation.", {
 			status: 405,
 			headers: { Allow: "POST" },
 		});

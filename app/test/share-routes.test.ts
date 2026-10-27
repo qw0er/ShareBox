@@ -238,7 +238,7 @@ it("reports share sync failure without misreporting a completed filesystem opera
 		} as Parameters<typeof rename.action>[0]);
 		expect(result.success).toBe(true);
 		expect(result.error).toBeUndefined();
-		expect(result.warning).toContain("文件操作已完成");
+		expect(result.warning).toContain("The file operation succeeded");
 		expect(await fs.readFile(path.join(files, "sync-moved.txt"), "utf8")).toBe(
 			"contents",
 		);

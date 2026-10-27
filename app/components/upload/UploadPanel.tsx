@@ -9,6 +9,7 @@ import {
 } from "@mui/material";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRevalidator } from "react-router";
+import { useTranslation } from "~/i18n";
 import { formatSize } from "~/utils/file-format";
 import UploadDropzone from "./UploadDropzone";
 import { UploadQueue, type UploadStatus } from "./upload-queue";
@@ -29,6 +30,7 @@ export default function UploadPanel({
 }: {
 	maxUploadBytes: number;
 }) {
+	const t = useTranslation();
 	const revalidator = useRevalidator();
 	const refresh = useRef(() => {
 		void revalidator.revalidate();
@@ -59,7 +61,7 @@ export default function UploadPanel({
 		>
 			<Stack spacing={2.5}>
 				<Typography id="upload-title" variant="h6" component="h2">
-					上传文件
+					{t("上传文件")}
 				</Typography>
 				<UploadDropzone
 					busy={false}
@@ -72,13 +74,13 @@ export default function UploadPanel({
 						}
 					}}
 				/>
-				{error && <Alert severity="error">{error}</Alert>}
+				{error && <Alert severity="error">{t(error)}</Alert>}
 				<Button
 					variant="contained"
 					disabled={!tasks.some((t) => t.status === "ready" && t.file)}
 					onClick={() => queue.startAll(maxUploadBytes)}
 				>
-					开始全部上传
+					{t("开始全部上传")}
 				</Button>
 				{tasks.map((task) => {
 					const finishing =
@@ -94,12 +96,12 @@ export default function UploadPanel({
 								{task.name}
 							</Typography>
 							<Typography variant="caption" role="status">
-								{finishing ? "正在完成" : labels[task.status]} ·{" "}
+								{finishing ? t("正在完成") : t(labels[task.status])} ·{" "}
 								{formatSize(task.bytes)} / {formatSize(task.size)} ·{" "}
 								{progress.toFixed(1)}%
 							</Typography>
 							<LinearProgress
-								aria-label={`${task.name} 上传进度`}
+								aria-label={`${task.name} ${t("上传进度")}`}
 								variant={finishing ? "indeterminate" : "determinate"}
 								value={progress}
 								sx={{ my: 1 }}
@@ -109,18 +111,18 @@ export default function UploadPanel({
 									severity="error"
 									sx={{ overflowWrap: "anywhere", mb: 1 }}
 								>
-									{task.error}
+									{t(task.error)}
 								</Alert>
 							)}
 							{!task.file && task.status !== "complete" && (
 								<Typography variant="caption">
-									重新选择同一个文件后可继续，也可直接删除此上传。
+									{t("重新选择同一个文件后可继续，也可直接删除此上传。")}
 								</Typography>
 							)}
 							<Stack direction="row" spacing={1}>
 								{["uploading", "queued"].includes(task.status) ? (
 									<Button onClick={() => void queue.pause(task.id)}>
-										暂停
+										{t("暂停")}
 									</Button>
 								) : (
 									!["complete", "pausing", "deleting"].includes(
@@ -134,7 +136,9 @@ export default function UploadPanel({
 												void queue.start(task.id, maxUploadBytes);
 											}}
 										>
-											{task.status === "ready" ? "开始上传" : "继续 / 重试"}
+											{task.status === "ready"
+												? t("开始上传")
+												: t("继续 / 重试")}
 										</Button>
 									)
 								)}
@@ -143,16 +147,14 @@ export default function UploadPanel({
 									disabled={["pausing", "deleting"].includes(task.status)}
 									onClick={() => void queue.remove(task.id)}
 								>
-									{task.status === "complete" ? "移除记录" : "删除上传"}
+									{task.status === "complete" ? t("移除记录") : t("删除上传")}
 								</Button>
 							</Stack>
 						</Box>
 					);
 				})}
 				<Typography variant="caption" color="text.secondary">
-					每个文件最多 {formatSize(maxUploadBytes)}，同时传输最多 2
-					个。暂停保留进度；删除上传会清理临时数据。刷新后重新选择原文件可续传。任务保留
-					7 天。
+					{t("上传说明 {size}").replace("{size}", formatSize(maxUploadBytes))}
 				</Typography>
 			</Stack>
 		</Paper>

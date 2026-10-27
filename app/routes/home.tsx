@@ -16,7 +16,7 @@ import type { Route } from "./+types/home";
 export function meta() {
 	return [
 		{ title: "ShareBox" },
-		{ name: "description", content: "ShareBox 文件管理工作区" },
+		{ name: "description", content: "ShareBox file management workspace" },
 	];
 }
 export async function loader({ request }: Route.LoaderArgs) {

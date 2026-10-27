@@ -12,13 +12,16 @@ import {
 	Typography,
 } from "@mui/material";
 import { Form, Link, useNavigation } from "react-router";
+import LanguageButton from "~/components/layout/LanguageButton";
 import ThemeModeButton from "~/components/layout/ThemeModeButton";
+import { useTranslation } from "~/i18n";
 
 export default function WorkspaceLayout({
 	children,
 }: {
 	children: React.ReactNode;
 }) {
+	const t = useTranslation();
 	const busy = useNavigation().state !== "idle";
 	return (
 		<Box sx={{ minHeight: "100vh" }}>
@@ -54,14 +57,14 @@ export default function WorkspaceLayout({
 							ShareBox
 						</Typography>
 						<Box sx={{ flex: 1 }} />
-						<Chip label="管理工作区" size="small" variant="outlined" />
+						<Chip label={t("管理工作区")} size="small" variant="outlined" />
 						<Button
 							component={Link}
 							to="/password"
 							size="small"
 							startIcon={<KeyOutlined />}
 						>
-							修改密码
+							{t("修改密码")}
 						</Button>
 						<Form method="post" action="/logout">
 							<Button
@@ -70,9 +73,10 @@ export default function WorkspaceLayout({
 								startIcon={<LogoutOutlined />}
 								disabled={busy}
 							>
-								退出登录
+								{t("退出登录")}
 							</Button>
 						</Form>
+						<LanguageButton />
 						<ThemeModeButton />
 					</Toolbar>
 				</Container>
@@ -84,13 +88,13 @@ export default function WorkspaceLayout({
 						color="primary"
 						sx={{ letterSpacing: 2 }}
 					>
-						文件工作区
+						{t("文件工作区")}
 					</Typography>
 					<Typography variant="h4" component="h1">
-						文件管理
+						{t("文件管理")}
 					</Typography>
 					<Typography color="text.secondary">
-						上传文件，浏览目录，在一个地方管理你的内容。
+						{t("上传文件，浏览目录，在一个地方管理你的内容。")}
 					</Typography>
 				</Stack>
 				<Box

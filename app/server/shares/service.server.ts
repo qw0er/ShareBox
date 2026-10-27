@@ -33,14 +33,16 @@ export async function publishFile(
 		const { targetPath } = await resolveEntry(filesDir, relativePath);
 		const stats = await fs.lstat(targetPath, { bigint: true });
 		if (!stats.isFile() || stats.isSymbolicLink())
-			throw new Response("只能分享普通文件", { status: 400 });
+			throw new Response("Only regular files can be shared", { status: 400 });
 		return store.publish(relativePath, {
 			targetDev: stats.dev.toString(),
 			targetIno: stats.ino.toString(),
 		});
 	} catch (error) {
 		if (missingTarget(error))
-			throw new Response("文件路径无效或文件不存在", { status: 400 });
+			throw new Response("Invalid file path or file does not exist", {
+				status: 400,
+			});
 		throw error;
 	}
 }
@@ -54,7 +56,7 @@ export async function downloadShare(
 	try {
 		const share = isShareId(id) ? store.find(id) : undefined;
 		if (share?.kind !== "file")
-			throw new Response("文件不存在", { status: 404 });
+			throw new Response("File not found", { status: 404 });
 		// Identity is checked on the open descriptor, not just on a prior lstat.
 		const response = await deliverFile(
 			filesDir,
@@ -70,8 +72,8 @@ export async function downloadShare(
 			error instanceof Response
 				? error
 				: missingTarget(error)
-					? new Response("文件不存在", { status: 404 })
-					: new Response("暂时无法读取文件", { status: 500 });
+					? new Response("File not found", { status: 404 })
+					: new Response("Unable to read the file right now", { status: 500 });
 		logger[response.status >= 500 ? "error" : "warn"](
 			{ component: "shares", status: response.status },
 			"Share download rejected",

@@ -1,6 +1,7 @@
 import CloudUploadOutlined from "@mui/icons-material/CloudUploadOutlined";
 import { Box, Button, Stack, Typography } from "@mui/material";
 import { useRef, useState } from "react";
+import { useTranslation } from "~/i18n";
 
 export default function UploadDropzone({
 	busy,
@@ -9,6 +10,7 @@ export default function UploadDropzone({
 	busy: boolean;
 	onSelect: (files: File[]) => void;
 }) {
+	const t = useTranslation();
 	const input = useRef<HTMLInputElement>(null);
 	const [dragging, setDragging] = useState(false);
 	return (
@@ -38,28 +40,28 @@ export default function UploadDropzone({
 					sx={{ fontSize: 40, color: "primary.main", mb: 1.5 }}
 				/>
 				<Typography variant="body2" sx={{ fontWeight: 600 }}>
-					将文件拖放到这里
+					{t("将文件拖放到这里")}
 				</Typography>
 				<Typography
 					variant="caption"
 					color="text.secondary"
 					sx={{ my: 1, display: "block" }}
 				>
-					或从设备中选择多个文件
+					{t("或从设备中选择多个文件")}
 				</Typography>
 				<Button
 					variant="outlined"
 					disabled={busy}
 					onClick={() => input.current?.click()}
 				>
-					选择文件
+					{t("选择文件")}
 				</Button>
 				<input
 					ref={input}
 					type="file"
 					multiple
 					hidden
-					aria-label="选择上传文件"
+					aria-label={t("选择上传文件")}
 					disabled={busy}
 					onChange={(event) => {
 						onSelect(Array.from(event.target.files ?? []));

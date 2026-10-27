@@ -11,6 +11,7 @@ import {
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
+import { useTranslation } from "~/i18n";
 import type { action } from "~/routes/files-rename";
 import type { FileNode } from "~/types/files";
 
@@ -23,6 +24,7 @@ export default function RenameDialog({
 	onClose: () => void;
 	onWarning: (message: string) => void;
 }) {
+	const t = useTranslation();
 	const fetcher = useFetcher<typeof action>();
 	const busy = fetcher.state !== "idle";
 	const [newName, setNewName] = useState(node.name);
@@ -56,14 +58,14 @@ export default function RenameDialog({
 				}}
 			>
 				<DialogTitle id={`rename-${node.path}`}>
-					重命名{node.type === "directory" ? "文件夹" : "文件"}
+					{t(node.type === "directory" ? "重命名文件夹" : "重命名文件")}
 				</DialogTitle>
 				<DialogContent>
 					<DialogContentText sx={{ mb: 2, overflowWrap: "anywhere" }}>
-						为「{node.name}」输入新名称。
+						{t("为 {name} 输入新名称。").replace("{name}", node.name)}
 					</DialogContentText>
 					<TextField
-						label="新名称"
+						label={t("新名称")}
 						value={newName}
 						onChange={(event) => setNewName(event.target.value)}
 						disabled={busy}
@@ -72,28 +74,28 @@ export default function RenameDialog({
 						error={invalidName}
 						helperText={
 							invalidName
-								? "名称不能为空，也不能包含斜杠或反斜杠。"
+								? t("名称不能为空，也不能包含斜杠或反斜杠。")
 								: node.type === "file"
-									? "文件扩展名也是名称的一部分。"
-									: "请输入文件夹名称。"
+									? t("文件扩展名也是名称的一部分。")
+									: t("请输入文件夹名称。")
 						}
 					/>
 					{fetcher.data?.error && (
 						<Alert severity="error" sx={{ mt: 2 }}>
-							{fetcher.data.error}
+							{t(fetcher.data.error)}
 						</Alert>
 					)}
 				</DialogContent>
 				<DialogActions sx={{ px: 3, pb: 2 }}>
 					<Button disabled={busy} onClick={() => onClose()}>
-						取消
+						{t("取消")}
 					</Button>
 					<Button
 						type="submit"
 						variant="contained"
 						disabled={busy || invalidName || newName === node.name}
 					>
-						{busy ? "保存中…" : "保存名称"}
+						{busy ? t("保存中…") : t("保存名称")}
 					</Button>
 				</DialogActions>
 			</Box>

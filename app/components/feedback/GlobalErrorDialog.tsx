@@ -9,6 +9,7 @@ import {
 	DialogTitle,
 	Stack,
 } from "@mui/material";
+import { useTranslation } from "~/i18n";
 
 interface GlobalErrorDialogProps {
 	title: string;
@@ -23,6 +24,7 @@ export default function GlobalErrorDialog({
 	actionHref,
 	actionLabel = "返回首页",
 }: GlobalErrorDialogProps) {
+	const t = useTranslation();
 	return (
 		<>
 			<Box sx={{ minHeight: "100vh", bgcolor: "background.default" }} />
@@ -66,14 +68,14 @@ export default function GlobalErrorDialog({
 				<DialogActions sx={{ px: 3, pb: 2.5 }}>
 					{actionHref ? (
 						<Button variant="contained" href={actionHref}>
-							{actionLabel}
+							{t(actionLabel)}
 						</Button>
 					) : (
 						<Button
 							variant="contained"
 							onClick={() => window.location.reload()}
 						>
-							重新加载
+							{t("重新加载")}
 						</Button>
 					)}
 				</DialogActions>

@@ -77,10 +77,13 @@ export function createAuth(
 		);
 		if (redirectToLogin)
 			throw redirect("/login", { headers: { "Cache-Control": "no-store" } });
-		throw new Response("登录已过期或尚未登录，请重新登录后重试。", {
-			status: 401,
-			headers: { "Cache-Control": "no-store", "Tus-Resumable": "1.0.0" },
-		});
+		throw new Response(
+			"Your session has expired or you are not signed in. Please sign in again.",
+			{
+				status: 401,
+				headers: { "Cache-Control": "no-store", "Tus-Resumable": "1.0.0" },
+			},
+		);
 	}
 	async function login(request: Request) {
 		assertAuthOrigin(request);
@@ -101,7 +104,7 @@ export function createAuth(
 				"Login rate limit reached",
 			);
 			return data(
-				{ error: "登录尝试过于频繁，请稍后重试。" },
+				{ error: "Too many login attempts. Please try again later." },
 				{
 					status: 429,
 					headers: {
@@ -120,7 +123,7 @@ export function createAuth(
 		} catch {
 			logger.warn({ component: "auth" }, "Rejected invalid login form");
 			return data(
-				{ error: "登录表单无效，请刷新页面后重新填写。" },
+				{ error: "Invalid login form. Refresh the page and try again." },
 				{ status: 400, headers: { "Cache-Control": "no-store" } },
 			);
 		}
@@ -135,7 +138,7 @@ export function createAuth(
 				"Administrator login failed",
 			);
 			return data(
-				{ error: "用户名或密码错误。" },
+				{ error: "Incorrect username or password." },
 				{ status: 400, headers: { "Cache-Control": "no-store" } },
 			);
 		}
@@ -163,7 +166,10 @@ export function createAuth(
 		}
 		if (changeAttempts >= 10) {
 			logger.warn({ component: "auth" }, "Password change rate limit reached");
-			return data({ error: "尝试过于频繁，请稍后重试。" }, { status: 429 });
+			return data(
+				{ error: "Too many attempts. Please try again later." },
+				{ status: 429 },
+			);
 		}
 		changeAttempts++;
 		let form: URLSearchParams;
@@ -174,7 +180,10 @@ export function createAuth(
 				{ component: "auth" },
 				"Rejected invalid password change form",
 			);
-			return data({ error: "表单无效，请刷新页面后重试。" }, { status: 400 });
+			return data(
+				{ error: "Invalid form. Refresh the page and try again." },
+				{ status: 400 },
+			);
 		}
 		const current = form.get("currentPassword");
 		const next = form.get("newPassword");
@@ -187,7 +196,10 @@ export function createAuth(
 			next !== confirmation
 		) {
 			return data(
-				{ error: "新密码须为 8 至 1024 个字符，且两次输入必须一致。" },
+				{
+					error:
+						"The new password must be 8 to 1024 characters and both entries must match.",
+				},
 				{ status: 400 },
 			);
 		}
@@ -197,7 +209,7 @@ export function createAuth(
 				{ component: "auth" },
 				"Password change rejected: incorrect current password",
 			);
-			return data({ error: "当前密码错误。" }, { status: 400 });
+			return data({ error: "Incorrect current password." }, { status: 400 });
 		}
 		const newHash = await hashPassword(next);
 		if (!savePassword(oldHash, newHash)) {
@@ -206,7 +218,7 @@ export function createAuth(
 				"Password change rejected: credentials changed concurrently",
 			);
 			return data(
-				{ error: "密码已发生更改，请重新登录后重试。" },
+				{ error: "The password has changed. Sign in again and retry." },
 				{ status: 409 },
 			);
 		}
@@ -243,9 +255,12 @@ export function assertAuthOrigin(request: Request) {
 			{ component: "auth", method: request.method },
 			"Rejected authentication request origin or method",
 		);
-		throw new Response("请求来源或提交方式无效，请从本站登录页面重新操作。", {
-			status: 403,
-		});
+		throw new Response(
+			"Invalid request origin or method. Please try again from the login page.",
+			{
+				status: 403,
+			},
+		);
 	}
 }
 const configuredAuth = createAuth(config);

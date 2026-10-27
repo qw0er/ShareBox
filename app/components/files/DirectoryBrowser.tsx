@@ -21,6 +21,7 @@ import {
 	useNavigation,
 	useRevalidator,
 } from "react-router";
+import { useTranslation } from "~/i18n";
 
 export type BrowserEntry = {
 	name: string;
@@ -43,6 +44,7 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 	directoryUrl?: (path: string) => string;
 	renderEntry: (entry: Entry) => ReactNode;
 }) {
+	const t = useTranslation();
 	const [filter, setFilter] = useState("");
 	const [sort, setSort] = useState("name");
 	const revalidator = useRevalidator();
@@ -70,7 +72,7 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 		<Paper
 			component="section"
 			variant="outlined"
-			aria-label="文件列表"
+			aria-label={t("文件列表")}
 			sx={{ overflow: "hidden" }}
 		>
 			<Stack spacing={2.5} sx={{ p: { xs: 2, sm: 3 } }}>
@@ -82,7 +84,7 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 							onClick={onNavigate ? () => onNavigate("") : undefined}
 							underline="hover"
 						>
-							全部文件
+							{t("全部文件")}
 						</Link>
 						{segments.map((name, index) =>
 							index === segments.length - 1 ? (
@@ -118,13 +120,13 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 						disabled={busy}
 						onClick={() => revalidator.revalidate()}
 					>
-						{busy ? "加载中" : "刷新"}
+						{busy ? t("加载中") : t("刷新")}
 					</Button>
 				</Stack>
 				<Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
 					<TextField
 						size="small"
-						label="筛选当前目录"
+						label={t("筛选当前目录")}
 						value={filter}
 						onChange={(event) => setFilter(event.target.value)}
 						sx={{ flex: 1 }}
@@ -141,16 +143,16 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 					<TextField
 						select
 						size="small"
-						label="排序"
+						label={t("排序")}
 						value={sort}
 						onChange={(event) => setSort(event.target.value)}
 						sx={{ minWidth: 150 }}
 					>
-						<MenuItem value="name">名称</MenuItem>
+						<MenuItem value="name">{t("名称")}</MenuItem>
 						{entries.some((entry) => entry.modifiedAt) && (
-							<MenuItem value="modified">最近修改</MenuItem>
+							<MenuItem value="modified">{t("最近修改")}</MenuItem>
 						)}
-						<MenuItem value="size">大小优先</MenuItem>
+						<MenuItem value="size">{t("大小优先")}</MenuItem>
 					</TextField>
 				</Stack>
 			</Stack>
@@ -175,7 +177,7 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 							}
 							underline="hover"
 						>
-							返回上级目录
+							{t("返回上级目录")}
 						</Link>
 					</Box>
 				)}
@@ -195,12 +197,12 @@ export default function DirectoryBrowser<Entry extends BrowserEntry>({
 					>
 						<FolderOutlined sx={{ fontSize: 48, color: "text.secondary" }} />
 						<Typography sx={{ fontWeight: 600 }}>
-							{entries.length ? "没有匹配的文件" : "这个目录还没有文件"}
+							{entries.length ? t("没有匹配的文件") : t("这个目录还没有文件")}
 						</Typography>
 						<Typography variant="body2" color="text.secondary">
 							{entries.length
-								? "试试其他名称，或清空筛选条件。"
-								: "文件添加后，点击刷新即可查看。"}
+								? t("试试其他名称，或清空筛选条件。")
+								: t("文件添加后，点击刷新即可查看。")}
 						</Typography>
 					</Stack>
 				)}

@@ -169,7 +169,7 @@ describe("signed cookie authentication", () => {
 		]) {
 			const result = await auth.login(input);
 			expect(result).toMatchObject({
-				data: { error: "用户名或密码错误。" },
+				data: { error: "Incorrect username or password." },
 				init: { status: 400 },
 			});
 		}
@@ -209,7 +209,7 @@ it("rejects oversized login bodies before password verification", async () => {
 	const auth = createAuth(settings());
 	const result = await auth.login(loginRequest("x".repeat(17000)));
 	expect(result).toMatchObject({
-		data: { error: "登录表单无效，请刷新页面后重新填写。" },
+		data: { error: "Invalid login form. Refresh the page and try again." },
 		init: { status: 400 },
 	});
 });

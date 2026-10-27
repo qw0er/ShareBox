@@ -14,6 +14,7 @@ import {
 } from "@mui/material";
 import { useState } from "react";
 import { Link } from "react-router";
+import { useTranslation } from "~/i18n";
 import type { FileNode } from "~/types/files";
 import type { ShareSummary } from "~/types/shares";
 import { privateDownloadUrl } from "~/utils/download-links";
@@ -52,6 +53,7 @@ function ManagedEntry({
 	onRemove: (node: FileNode) => void;
 	shared: boolean;
 }) {
+	const t = useTranslation();
 	const directory = node.type === "directory";
 	return (
 		<Stack
@@ -64,7 +66,7 @@ function ManagedEntry({
 				{...(!directory ? { reloadDocument: true } : {})}
 				download={directory ? undefined : node.name}
 				onClick={directory ? () => onNavigate(node.path) : undefined}
-				aria-label={`${directory ? "查看目录" : "下载"} ${node.name}`}
+				aria-label={`${directory ? t("查看目录") : t("下载")} ${node.name}`}
 				sx={{ ...fileEntryButtonSx, flex: 1, minWidth: 0 }}
 			>
 				<FileEntryContent
@@ -72,7 +74,7 @@ function ManagedEntry({
 					directory={directory}
 					detail={
 						node.type === "directory"
-							? `文件夹 · ${node.children.length} 项`
+							? `${t("文件夹")} · ${node.children.length} ${t("项")}`
 							: formatSize(node.size)
 					}
 				/>
@@ -81,7 +83,7 @@ function ManagedEntry({
 						direction="row"
 						sx={{ alignItems: "center", color: "primary.main", flexShrink: 0 }}
 					>
-						<Typography variant="body2">查看</Typography>
+						<Typography variant="body2">{t("查看")}</Typography>
 						<ChevronRight fontSize="small" />
 					</Stack>
 				)}
@@ -96,42 +98,42 @@ function ManagedEntry({
 				}}
 			>
 				{node.type === "file" && (
-					<Tooltip title="下载">
+					<Tooltip title={t("下载")}>
 						<IconButton
 							component="a"
 							href={privateDownloadUrl(node.path)}
 							download={node.name}
 							size="small"
-							aria-label={`下载 ${node.name}`}
+							aria-label={`${t("下载")} ${node.name}`}
 						>
 							<DownloadOutlined fontSize="small" />
 						</IconButton>
 					</Tooltip>
 				)}
 				{!directory && (
-					<Tooltip title={shared ? "管理分享" : "分享"}>
+					<Tooltip title={shared ? t("管理分享") : t("分享")}>
 						<IconButton
 							size="small"
-							aria-label={`${shared ? "管理分享" : "分享"} ${node.name}`}
+							aria-label={`${shared ? t("管理分享") : t("分享")} ${node.name}`}
 							onClick={() => onShare(node.path)}
 						>
 							<ShareOutlined fontSize="small" />
 						</IconButton>
 					</Tooltip>
 				)}
-				<Tooltip title="重命名">
+				<Tooltip title={t("重命名")}>
 					<IconButton
 						size="small"
-						aria-label={`重命名 ${node.name}`}
+						aria-label={`${t("重命名")} ${node.name}`}
 						onClick={() => onRename(node)}
 					>
 						<DriveFileRenameOutlineOutlined fontSize="small" />
 					</IconButton>
 				</Tooltip>
-				<Tooltip title="删除">
+				<Tooltip title={t("删除")}>
 					<IconButton
 						size="small"
-						aria-label={`删除 ${node.name}`}
+						aria-label={`${t("删除")} ${node.name}`}
 						onClick={() => onRemove(node)}
 					>
 						<DeleteOutlined fontSize="small" />
@@ -151,6 +153,7 @@ export default function FileBrowser({
 	shares: ShareSummary[];
 	onShare: (path: string) => void;
 }) {
+	const t = useTranslation();
 	const [renameTarget, setRenameTarget] = useState<FileNode | null>(null);
 	const [removeTarget, setRemoveTarget] = useState<FileNode | null>(null);
 	const [warning, setWarning] = useState<string | null>(null);
@@ -164,7 +167,7 @@ export default function FileBrowser({
 					onClose={() => setWarning(null)}
 					sx={{ mb: 2 }}
 				>
-					{warning}
+					{t(warning)}
 				</Alert>
 			)}
 			<DirectoryBrowser

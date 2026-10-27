@@ -2,6 +2,7 @@ import ContentCopyOutlined from "@mui/icons-material/ContentCopyOutlined";
 import OpenInNewOutlined from "@mui/icons-material/OpenInNewOutlined";
 import { Alert, Button, Stack } from "@mui/material";
 import { useState } from "react";
+import { useTranslation } from "~/i18n";
 
 export default function ShareLinkControls({
 	shareId,
@@ -10,6 +11,7 @@ export default function ShareLinkControls({
 	shareId: string;
 	disabled?: boolean;
 }) {
+	const t = useTranslation();
 	const [message, setMessage] = useState<"copied" | "failed" | null>(null);
 	return (
 		<Stack spacing={1}>
@@ -29,7 +31,7 @@ export default function ShareLinkControls({
 						}
 					}}
 				>
-					复制链接
+					{t("复制链接")}
 				</Button>
 				<Button
 					size="small"
@@ -40,7 +42,7 @@ export default function ShareLinkControls({
 					target="_blank"
 					rel="noopener noreferrer"
 				>
-					打开
+					{t("打开")}
 				</Button>
 			</Stack>
 			{message && (
@@ -49,8 +51,8 @@ export default function ShareLinkControls({
 					onClose={() => setMessage(null)}
 				>
 					{message === "copied"
-						? "链接已复制"
-						: "无法复制，请在管理分享对话框中手动选择链接复制。"}
+						? t("链接已复制")
+						: t("无法复制，请在管理分享对话框中手动选择链接复制。")}
 				</Alert>
 			)}
 		</Stack>

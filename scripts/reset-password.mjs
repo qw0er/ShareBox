@@ -16,10 +16,12 @@ if (!fs.existsSync(dbPath))
 const database = openDatabase(dbPath);
 try {
 	await resetAdministrator(database);
-	console.log("密码已重置，旧会话已失效。请启动 ShareBox 使用新密码登录。");
+	console.log(
+		"Password reset. Existing sessions are invalid. Start ShareBox and sign in with the new password.",
+	);
 } catch {
 	console.error(
-		"密码重置失败，请确认已停止服务、管理员已初始化且状态数据库可写。",
+		"Password reset failed. Ensure the service is stopped, the administrator is initialized, and the state database is writable.",
 	);
 	process.exitCode = 1;
 } finally {

@@ -14,7 +14,7 @@ export function loader({ request }: Route.LoaderArgs) {
 export function action({ request }: Route.ActionArgs) {
 	return withRequestLogging(request, "download", async () => {
 		await getAuth().requireAdmin(request);
-		return new Response("下载仅支持 GET 或 HEAD 请求。", {
+		return new Response("Downloads only support GET or HEAD requests.", {
 			status: 405,
 			headers: { Allow: "GET, HEAD" },
 		});

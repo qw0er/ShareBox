@@ -10,6 +10,7 @@ import {
 } from "@mui/material";
 import { useEffect, useId, useState } from "react";
 import { useFetcher } from "react-router";
+import { useTranslation } from "~/i18n";
 import type { ShareActionResult, ShareSummary } from "~/types/shares";
 import ShareLinkControls from "./ShareLinkControls";
 
@@ -22,6 +23,7 @@ export default function ShareDialog({
 	share?: ShareSummary;
 	onClose: () => void;
 }) {
+	const t = useTranslation();
 	const fetcher = useFetcher<ShareActionResult>();
 	const busy = fetcher.state !== "idle";
 	const titleId = useId();
@@ -44,7 +46,7 @@ export default function ShareDialog({
 			aria-labelledby={titleId}
 		>
 			<DialogTitle id={titleId}>
-				{valid ? "管理分享" : share ? "重新分享文件" : "分享文件？"}
+				{valid ? t("管理分享") : share ? t("重新分享文件") : t("分享文件？")}
 			</DialogTitle>
 			<DialogContent>
 				<DialogContentText sx={{ overflowWrap: "anywhere", mb: 2 }}>
@@ -53,7 +55,7 @@ export default function ShareDialog({
 				{valid && share ? (
 					<>
 						<TextField
-							label="分享链接"
+							label={t("分享链接")}
 							value={origin ? `${origin}/s/${share.id}` : ""}
 							fullWidth
 							slotProps={{ input: { readOnly: true } }}
@@ -70,23 +72,27 @@ export default function ShareDialog({
 					<>
 						{share && (
 							<Alert severity="warning" sx={{ mb: 2 }}>
-								原文件已移动、删除或被替换，旧链接已失效。重新分享将生成新链接。
+								{t(
+									"原文件已移动、删除或被替换，旧链接已失效。重新分享将生成新链接。",
+								)}
 							</Alert>
 						)}
 						<DialogContentText>
-							分享后，任何拥有链接的人都可以下载此文件。取消发布可阻止后续下载。
+							{t(
+								"分享后，任何拥有链接的人都可以下载此文件。取消发布可阻止后续下载。",
+							)}
 						</DialogContentText>
 					</>
 				)}
 				{fetcher.data?.error && (
 					<Alert severity="error" sx={{ mt: 2 }}>
-						{fetcher.data.error}
+						{t(fetcher.data.error)}
 					</Alert>
 				)}
 			</DialogContent>
 			<DialogActions sx={{ px: 3, pb: 2, flexWrap: "wrap", gap: 1 }}>
 				<Button disabled={busy} onClick={onClose}>
-					关闭
+					{t("关闭")}
 				</Button>
 				{share && (
 					<Button
@@ -99,7 +105,7 @@ export default function ShareDialog({
 							)
 						}
 					>
-						取消发布
+						{t("取消发布")}
 					</Button>
 				)}
 				{!valid && (
@@ -113,7 +119,7 @@ export default function ShareDialog({
 							)
 						}
 					>
-						{busy ? "处理中…" : share ? "重新分享" : "确认分享"}
+						{busy ? t("处理中…") : share ? t("重新分享") : t("确认分享")}
 					</Button>
 				)}
 			</DialogActions>

@@ -17,13 +17,13 @@ export async function handleRenameAction({
 			{ operation: "rename" },
 			"Rejected non-text rename form",
 		);
-		return { error: "操作表单无效，请刷新页面后重试。" };
+		return { error: "Invalid form. Refresh the page and try again." };
 	}
 
 	const relativePath = form.get("path");
 	if (typeof relativePath !== "string") {
 		requestLogger.warn({ operation: "rename" }, "Invalid rename file path");
-		return { error: "文件路径无效，请刷新列表后重试。" };
+		return { error: "Invalid file path. Refresh the list and try again." };
 	}
 	const newName = form.get("newName");
 	if (
@@ -35,9 +35,9 @@ export async function handleRenameAction({
 	) {
 		requestLogger.warn(
 			{ operation: "rename" },
-			"文件名无效，请输入有效的新名称。",
+			"Invalid filename. Enter a valid name.",
 		);
-		return { error: "文件名无效，请输入有效的新名称。" };
+		return { error: "Invalid filename. Enter a valid name." };
 	}
 	try {
 		const { targetPath: absolutePath } = await resolveEntry(
@@ -62,7 +62,7 @@ export async function handleRenameAction({
 			"Unable to rename file entry",
 		);
 		return {
-			error: fileOperationMessage(error, "重命名"),
+			error: fileOperationMessage(error, "rename"),
 		};
 	}
 	requestLogger.info(

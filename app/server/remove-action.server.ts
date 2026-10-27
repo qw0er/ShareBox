@@ -16,13 +16,13 @@ export async function handleRemoveAction({
 			{ operation: "remove" },
 			"Rejected non-text removal form",
 		);
-		return { error: "操作表单无效，请刷新页面后重试。" };
+		return { error: "Invalid form. Refresh the page and try again." };
 	}
 
 	const relativePath = form.get("path");
 	if (typeof relativePath !== "string") {
 		requestLogger.warn({ operation: "remove" }, "Invalid file path");
-		return { error: "文件路径无效，请刷新列表后重试。" };
+		return { error: "Invalid file path. Refresh the list and try again." };
 	}
 
 	try {
@@ -37,7 +37,7 @@ export async function handleRemoveAction({
 			{ err: error, operation: "remove", relativePath },
 			"Unable to remove file entry",
 		);
-		return { error: fileOperationMessage(error, "删除") };
+		return { error: fileOperationMessage(error, "delete") };
 	}
 }
 

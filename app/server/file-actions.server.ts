@@ -25,7 +25,10 @@ export async function prepareFileAction(
 		requestLogger.warn({ operation }, "Rejected non-POST action");
 		return {
 			ok: false,
-			result: { error: "此操作仅支持提交表单，请刷新页面后重试。" },
+			result: {
+				error:
+					"This operation requires a form submission. Refresh the page and try again.",
+			},
 		};
 	}
 	const expectedOrigin = CONFIG.adminHost
@@ -35,7 +38,9 @@ export async function prepareFileAction(
 		requestLogger.warn({ operation }, "Rejected action origin");
 		return {
 			ok: false,
-			result: { error: "请求来源无效，请从本站页面重新操作。" },
+			result: {
+				error: "Invalid request origin. Please try again from this site.",
+			},
 		};
 	}
 	let form: FormData;
@@ -46,7 +51,7 @@ export async function prepareFileAction(
 		return {
 			ok: false,
 			result: {
-				error: "无法读取操作表单，请刷新页面后重试。",
+				error: "Unable to read the form. Refresh the page and try again.",
 			},
 		};
 	}

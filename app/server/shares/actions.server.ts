@@ -20,17 +20,17 @@ export async function handleShareAction(
 			? `https://${adminHost}`
 			: new URL(request.url).origin;
 		if (request.headers.get("Origin") !== expectedOrigin)
-			throw new Response("请求来源无效", { status: 403 });
+			throw new Response("Invalid request origin", { status: 403 });
 		let form: URLSearchParams;
 		try {
 			form = await readBoundedForm(request);
 		} catch {
-			throw new Response("操作表单无效或过大", { status: 400 });
+			throw new Response("The form is invalid or too large", { status: 400 });
 		}
 		if (operation === "create") {
 			const relativePath = form.get("path");
 			if (!relativePath || form.getAll("path").length !== 1)
-				throw new Response("请选择文件", { status: 400 });
+				throw new Response("Please select a file", { status: 400 });
 			const shareId = await publishFile(store, filesDir, relativePath);
 			return Response.json(
 				{ success: true, shareId },
@@ -39,7 +39,7 @@ export async function handleShareAction(
 		}
 		const id = form.get("shareId");
 		if (!id || !isShareId(id) || form.getAll("shareId").length !== 1)
-			throw new Response("分享标识无效", { status: 400 });
+			throw new Response("Invalid share ID", { status: 400 });
 		store.revoke(id);
 		return Response.json({ success: true }, { headers: SHARE_HEADERS });
 	} catch (error) {
@@ -51,7 +51,7 @@ export async function handleShareAction(
 		const message =
 			error instanceof Response
 				? await error.text()
-				: "分享操作失败，请稍后重试";
+				: "Share operation failed. Please try again later";
 		return Response.json(
 			{ error: message },
 			{ status, headers: SHARE_HEADERS },

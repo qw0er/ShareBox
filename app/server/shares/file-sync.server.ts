@@ -22,7 +22,7 @@ export function synchronizeFileShares(
 		return {
 			...response,
 			warning:
-				"文件操作已完成，但分享记录同步失败。请刷新分享列表，检查并取消失效链接。",
+				"The file operation succeeded, but share records could not be synchronized. Refresh the share list and revoke invalid links.",
 		};
 	}
 }

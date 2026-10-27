@@ -83,7 +83,7 @@ it("immediately revokes links and returns the same 404 for malformed and unknown
 	for (const value of [id, "f".repeat(32), "../test.txt", "invalid"]) {
 		const response = await download(value);
 		expect(response.status).toBe(404);
-		expect(await response.text()).toBe("文件不存在");
+		expect(await response.text()).toBe("File not found");
 		expect(response.headers.get("Cache-Control")).toBe("no-store");
 	}
 });

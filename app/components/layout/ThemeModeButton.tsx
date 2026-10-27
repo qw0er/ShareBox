@@ -11,6 +11,7 @@ import {
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
 import { useId, useState } from "react";
+import { useTranslation } from "~/i18n";
 
 const modes = [
 	{ value: "system", label: "跟随系统", Icon: BrightnessAutoOutlined },
@@ -19,6 +20,7 @@ const modes = [
 ] as const;
 
 export default function ThemeModeButton() {
+	const t = useTranslation();
 	const { mode, setMode } = useColorScheme();
 	const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 	const menuId = useId();
@@ -26,9 +28,9 @@ export default function ThemeModeButton() {
 	const Icon = current.Icon;
 	return (
 		<>
-			<Tooltip title={`主题：${current.label}`}>
+			<Tooltip title={`${t("主题")}：${t(current.label)}`}>
 				<IconButton
-					aria-label={`切换主题，当前${current.label}`}
+					aria-label={`${t("切换主题")} (${t(current.label)})`}
 					aria-haspopup="menu"
 					aria-controls={anchor ? menuId : undefined}
 					aria-expanded={anchor ? true : undefined}
@@ -57,7 +59,7 @@ export default function ThemeModeButton() {
 						<ListItemIcon>
 							<ModeIcon fontSize="small" />
 						</ListItemIcon>
-						<ListItemText>{label}</ListItemText>
+						<ListItemText>{t(label)}</ListItemText>
 					</MenuItem>
 				))}
 			</Menu>

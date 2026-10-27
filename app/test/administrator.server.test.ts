@@ -27,7 +27,7 @@ afterEach(() => {
 });
 function emittedPassword(write: ReturnType<typeof vi.fn>) {
 	const output = write.mock.calls.map((call) => call[0]).join("");
-	const password = /^密码: ([A-Za-z0-9_-]{32})$/m.exec(output)?.[1];
+	const password = /^Password: ([A-Za-z0-9_-]{32})$/m.exec(output)?.[1];
 	if (!password)
 		throw new Error("Expected a generated password in console output");
 	return password;
@@ -124,7 +124,7 @@ it("runs the reset command using the same state database and leaves shared files
 			env: { ...process.env, STATE_DIR: state, LOGGER_LEVEL: "silent" },
 		},
 	);
-	const password = /^密码: ([A-Za-z0-9_-]{32})$/m.exec(stdout)?.[1];
+	const password = /^Password: ([A-Za-z0-9_-]{32})$/m.exec(stdout)?.[1];
 	if (!password) throw new Error("Reset command did not output a password");
 	database = openDatabase(path.join(state, "state.db"));
 	const settings = await initializeAdministrator(database, vi.fn());

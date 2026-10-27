@@ -41,7 +41,7 @@ function printPassword(
 	// Intentional one-time disclosure: bypass normal secret redaction and log-level
 	// filtering. Never include this password or the signing key in ordinary logs.
 	write(
-		`\nShareBox 管理员凭据\n用户名: ${username}\n密码: ${password}\n请保存密码；重启不会再次显示。\n\n`,
+		`\nShareBox administrator credentials\nUsername: ${username}\nPassword: ${password}\nSave this password; it will not be shown again after restart.\n\n`,
 	);
 }
 
